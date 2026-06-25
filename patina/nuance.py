@@ -156,6 +156,29 @@ def _grid_quad(corners, nrm4, uv4, nu, nv):
             np.array(tris, np.uint32))
 
 
+def _match_winding(grid_pos, grid_idx, src_pos, src_tris):
+    """Flip generated triangle winding to match the source face's orientation.
+
+    ``_quad_loop`` sorts corners geometrically but its loop orientation is
+    arbitrary relative to the source face, so ``_grid_quad`` may emit every
+    triangle wound backwards. Godot back-face-culls by default, so a reversed
+    face simply vanishes from one side. We compare the first generated
+    triangle's geometric normal against the aggregate normal of the source
+    triangles (their winding) and, if they oppose, swap the 2nd/3rd index of
+    every generated triangle. This preserves source orientation without making
+    materials double-sided or disabling culling.
+    """
+    if grid_idx.shape[0] == 0:
+        return grid_idx
+    st = src_pos[src_tris]
+    src_n = np.cross(st[:, 1] - st[:, 0], st[:, 2] - st[:, 0]).sum(axis=0)
+    a, b, c = grid_pos[grid_idx[0, 0]], grid_pos[grid_idx[0, 1]], grid_pos[grid_idx[0, 2]]
+    gen_n = np.cross(b - a, c - a)
+    if float(np.dot(gen_n, src_n)) < 0.0:
+        grid_idx = grid_idx[:, [0, 2, 1]]
+    return grid_idx
+
+
 def _densify_prim(prim: Primitive, target: float, max_subdiv: int) -> None:
     seg_cap = min(_MAX_SEG, 2 ** max_subdiv if max_subdiv else 1)
     out_pos, out_nrm, out_uv, out_idx = [], [], [], []
@@ -176,6 +199,7 @@ def _densify_prim(prim: Primitive, target: float, max_subdiv: int) -> None:
             n4 = prim.normals[ordered] if has_n else None
             t4 = prim.uv0[ordered] if has_uv else None
             gp, gn, gt, gi = _grid_quad(cp, n4, t4, nu, nv)
+            gi = _match_winding(gp, gi, prim.positions, tri_local)
             out_pos.append(gp)
             if has_n: out_nrm.append(gn)
             if has_uv: out_uv.append(gt)
