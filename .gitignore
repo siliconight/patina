@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Patina output (generated; regenerate with the CLI)
+*.patina.glb
+*.patina.json
+*.patina.textures/
+*.patina.gameplay.json
+
+# Godot
+.godot/
+*.import
+
+# OS
+.DS_Store
+Thumbs.db

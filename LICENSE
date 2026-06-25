@@ -1,0 +1,12 @@
+PLACEHOLDER — choose a licence before publishing.
+
+The TDD suggests MIT or CC0, which also keeps any future vendored shader clean.
+The PS1 shader (godot/addon/patina/ps1.gdshader) is written from scratch for
+this project, so whatever you pick here covers it.
+
+To use MIT, replace this file with the MIT licence text and your copyright line,
+e.g.:
+
+    MIT License
+    Copyright (c) 2026 Brannen Graves / GabagoolStudios
+    ...

@@ -1,0 +1,37 @@
+{
+  "schema": "1.6.0",
+  "name": "shell",
+  "mode": "heist",
+  "markers": [
+    {
+      "id": "SPAWN_0",
+      "pos": [
+        -3,
+        -2,
+        0
+      ]
+    },
+    {
+      "id": "LOOT_0",
+      "pos": [
+        1.5,
+        -1.5,
+        1.0
+      ]
+    },
+    {
+      "id": "EXIT_0",
+      "pos": [
+        3.5,
+        2.5,
+        0
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "mesh": "counter",
+      "role": "trim"
+    }
+  ]
+}

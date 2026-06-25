@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Patina style manifest",
+  "type": "object",
+  "required": ["schema", "generator", "source", "seed", "mode", "shader", "surfaces", "kitbash"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "type": "string" },
+    "generator": { "type": "string" },
+    "source": { "type": "string" },
+    "seed": { "type": "integer" },
+    "mode": { "type": "string", "enum": ["vertex-color", "procedural", "byo"] },
+    "shader": {
+      "type": "object",
+      "required": ["name", "vertex_jitter", "affine_strength", "color_depth", "dither", "ambient", "fog"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "vertex_jitter": { "type": "number" },
+        "affine_strength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "color_depth": { "type": "integer", "minimum": 2 },
+        "dither": { "type": "boolean" },
+        "ambient": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+        "fog": {
+          "type": "object",
+          "required": ["enabled", "color", "near", "far"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "color": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "near": { "type": "number" },
+            "far": { "type": "number" }
+          }
+        }
+      }
+    },
+    "surfaces": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["vertex_color", "uv_channel"],
+        "additionalProperties": false,
+        "properties": {
+          "vertex_color": { "type": "boolean" },
+          "uv_channel": { "type": "string" },
+          "texture": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "kitbash": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["mesh", "role", "bounds_min", "bounds_max"],
+        "additionalProperties": false,
+        "properties": {
+          "mesh": { "type": "string" },
+          "role": { "type": "string" },
+          "bounds_min": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+          "bounds_max": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+        }
+      }
+    },
+    "stats": { "type": "object" }
+  }
+}

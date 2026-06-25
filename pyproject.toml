@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "patina"
+version = "0.1.0"
+description = "An automated PS1-era styling pass for Deli Counter greyboxes."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "GabagoolStudios" }]
+license = { file = "LICENSE" }
+dependencies = [
+    "numpy>=1.23",
+    "pillow>=9.0",
+    "pygltflib>=1.16",
+    "jsonschema>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+# Optional: enables the geometric bevel bridge (Blender as a module). Heavy;
+# only needed if you want true beveled edges rather than the edge-cavity AO
+# stand-in. Version must match your Blender/Python.
+bevel = ["bpy"]
+
+[project.scripts]
+patina = "patina.cli:main"
+
+[tool.setuptools]
+packages = ["patina", "patina.schema"]
+
+[tool.setuptools.package-data]
+"patina.schema" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

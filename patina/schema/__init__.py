@@ -1,0 +1,1 @@
+"""Packaged manifest schema resources."""
