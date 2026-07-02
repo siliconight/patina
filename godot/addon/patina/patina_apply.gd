@@ -43,7 +43,78 @@ static func apply_to_scene(root: Node, manifest_path: String) -> String:
 			applied += 1
 
 	_setup_environment(root, shader_cfg)
+	var n_decals := _apply_decals(root, manifest, base_dir)
+	if n_decals >= 0:
+		return "Applied PS1 style to %d mesh(es); %d decal(s)." % [applied, n_decals]
 	return "Applied PS1 style to %d mesh(es)." % applied
+
+
+# Decal pass (manifest schema 0.2.0+): instantiate Decal nodes under a single
+# deletable "PatinaDecals" node. Re-applying rebuilds it from scratch, so the
+# pass stays reproducible. Positions/normals are in the styled .glb's baked
+# space, which the glTF importer preserves node-for-node, so they are used as
+# local transforms under the shell root.
+# FIRST-RUN-IN-ENGINE: walk to confirm projection direction and fade.
+static func _apply_decals(root: Node, manifest: Dictionary, base_dir: String) -> int:
+	var dec: Dictionary = manifest.get("decals", {})
+	var instances: Array = dec.get("instances", [])
+	var textures: Dictionary = dec.get("textures", {})
+
+	var old := root.get_node_or_null("PatinaDecals")
+	if old:
+		old.free()
+	if instances.is_empty():
+		return -1 if not dec else 0
+
+	var holder := Node3D.new()
+	holder.name = "PatinaDecals"
+	root.add_child(holder)
+	if Engine.is_editor_hint() and root.get_tree():
+		holder.owner = root.get_tree().edited_scene_root
+
+	var tex_cache := {}
+	var made := 0
+	for inst in instances:
+		var dtype: String = inst.get("type", "")
+		if not textures.has(dtype):
+			continue
+		if not tex_cache.has(dtype):
+			tex_cache[dtype] = load(base_dir.path_join(textures[dtype]))
+		var tex: Texture2D = tex_cache[dtype]
+		if tex == null:
+			continue
+
+		var d := Decal.new()
+		d.name = "%s_%d" % [dtype, made]
+		d.texture_albedo = tex
+		var size: Array = inst.get("size", [0.5, 0.5])
+		d.size = Vector3(size[0], 0.3, size[1])   # y = projection depth
+		d.cull_mask = 0xFFFFF
+		d.albedo_mix = 1.0
+
+		var p: Array = inst.get("pos", [0, 0, 0])
+		var nrm: Array = inst.get("normal", [0, 0, 1])
+		# Patina's baked space is Z-up (the Deli Counter contract), and these
+		# transforms are local under the shell root, so "up" here is +Z.
+		var up := Vector3(0, 0, 1)
+		var n := Vector3(nrm[0], nrm[1], nrm[2]).normalized()
+		if n.length_squared() < 0.5:
+			n = up
+		# Decal projects along local -Y; aim -Y into the surface (Y = normal).
+		# With up as the helper, the decal's texture V axis lands world-vertical
+		# on walls, which is what "rot: vertical" streak decals rely on.
+		var helper := up if absf(n.dot(up)) < 0.99 else Vector3.RIGHT
+		var x := helper.cross(n).normalized()
+		var z := x.cross(n).normalized()
+		var basis := Basis(x, n, z)
+		basis = basis.rotated(n, deg_to_rad(inst.get("rot", 0.0)))
+		d.transform = Transform3D(basis, Vector3(p[0], p[1], p[2]) + n * 0.05)
+
+		holder.add_child(d)
+		if Engine.is_editor_hint() and root.get_tree():
+			d.owner = root.get_tree().edited_scene_root
+		made += 1
+	return made
 
 
 static func _make_material(shader_cfg: Dictionary, spec: Dictionary, base_dir: String) -> ShaderMaterial:

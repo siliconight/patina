@@ -29,15 +29,28 @@ from PIL import Image
 
 from .determinism import rng_for
 from .mesh import SurfaceRole
+from .themes import Theme
 
 # Albedo base colour per role (a touch warmer / stronger than the vertex tints,
-# since the shader multiplies texture * vertex colour).
+# since the shader multiplies texture * vertex colour). Themes override these;
+# the new v0.2 roles default to their umbrella values (and the default theme
+# additionally aliases them, so no new tiles are generated in default).
 _ALBEDO = {
     SurfaceRole.FLOOR:   (0.42, 0.40, 0.38),
     SurfaceRole.WALL:    (0.66, 0.65, 0.67),
     SurfaceRole.CEILING: (0.55, 0.55, 0.53),
     SurfaceRole.TRIM:    (0.50, 0.43, 0.34),
     SurfaceRole.UNKNOWN: (0.60, 0.60, 0.60),
+    SurfaceRole.EXTERIOR_WALL: (0.66, 0.65, 0.67),
+    SurfaceRole.ROOF:          (0.55, 0.55, 0.53),
+}
+
+# byo-mode lookup fallbacks: a texture folder keyed for v0.1.x roles keeps
+# working — new roles borrow their umbrella role's file when no specific one
+# is provided.
+_BYO_FALLBACK = {
+    SurfaceRole.EXTERIOR_WALL.value: SurfaceRole.WALL.value,
+    SurfaceRole.ROOF.value: SurfaceRole.CEILING.value,
 }
 
 
@@ -72,11 +85,23 @@ def _tileable_noise(size: int, rng: np.random.Generator, octaves=3) -> np.ndarra
     return field
 
 
-def generate_tile(role: SurfaceRole, opts: PaletteOptions) -> Image.Image:
-    """Deterministic posterized albedo tile for a role."""
+def generate_tile(role: SurfaceRole, opts: PaletteOptions,
+                  theme: Theme | None = None) -> Image.Image:
+    """Deterministic posterized albedo tile for a role (material key).
+
+    The noise stream is keyed only by ``(seed, "palette", role)`` and theme
+    albedo variants draw from a *separate* stream, so a theme with no albedo
+    entry for a role produces bytes identical to the pre-theme output.
+    """
     rng = rng_for(opts.seed, "palette", role.value)
     n = _tileable_noise(opts.size, rng)
     base = np.array(_ALBEDO.get(role, _ALBEDO[SurfaceRole.UNKNOWN]), np.float32)
+    if theme is not None:
+        variants = theme.albedo_variants(role.value)
+        if variants:
+            vrng = rng_for(opts.seed, "palette", role.value, "variant")
+            base = np.array(variants[int(vrng.integers(0, len(variants)))],
+                            np.float32)
     # Modulate brightness by noise (+/- ~18%) then tint.
     value = 0.82 + 0.36 * n
     rgb = np.clip(value[..., None] * base[None, None, :], 0, 1)
@@ -91,22 +116,38 @@ def _png_bytes(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def build_palette(roles: set[SurfaceRole], opts: PaletteOptions) -> dict[str, bytes]:
-    """Return {role -> PNG bytes} for the chosen mode (empty for vertex-color)."""
+def build_palette(roles: set[SurfaceRole], opts: PaletteOptions,
+                  theme: Theme | None = None) -> dict[str, bytes]:
+    """Return {material key -> PNG bytes} for the chosen mode.
+
+    Keys are theme material keys: aliased roles share one tile (the default
+    theme aliases ``exterior_wall`` -> ``wall`` and ``roof`` -> ``ceiling``,
+    so its output file set matches v0.1.x exactly). Empty for vertex-color.
+    """
     if opts.mode == "vertex-color":
         return {}
+    keys = sorted({(theme.material_key(r.value) if theme else r.value)
+                   for r in roles})
     if opts.mode == "procedural":
-        return {r.value: _png_bytes(generate_tile(r, opts)) for r in sorted(roles, key=lambda x: x.value)}
+        return {k: _png_bytes(generate_tile(SurfaceRole(k), opts, theme))
+                for k in keys}
     if opts.mode == "byo":
         if not opts.byo_dir or not os.path.isdir(opts.byo_dir):
             raise FileNotFoundError(f"byo mode needs --textures DIR (got {opts.byo_dir!r})")
         out: dict[str, bytes] = {}
-        for r in sorted(roles, key=lambda x: x.value):
-            for ext in (".png", ".jpg", ".jpeg", ".webp"):
-                cand = os.path.join(opts.byo_dir, r.value + ext)
-                if os.path.exists(cand):
-                    with open(cand, "rb") as fh:
-                        out[r.value] = fh.read()
+        for key in keys:
+            for name in (key, _BYO_FALLBACK.get(key)):
+                if name is None:
+                    continue
+                found = False
+                for ext in (".png", ".jpg", ".jpeg", ".webp"):
+                    cand = os.path.join(opts.byo_dir, name + ext)
+                    if os.path.exists(cand):
+                        with open(cand, "rb") as fh:
+                            out[key] = fh.read()
+                        found = True
+                        break
+                if found:
                     break
         return out
     raise ValueError(f"unknown palette mode {opts.mode!r}")

@@ -52,7 +52,10 @@ def _surface_block(used_roles: set[SurfaceRole], textures: dict[str, str],
 
 def build(scene: Scene, *, mode: str, seed: int,
           textures: dict[str, str] | None = None,
-          shader: dict | None = None) -> dict:
+          shader: dict | None = None,
+          theme=None,
+          decal_placements: list | None = None,
+          decal_textures: dict[str, str] | None = None) -> dict:
     textures = textures or {}
     used = {r for r in (SurfaceRole(k) for k in role_counts(scene))}
     kitbash = []
@@ -75,14 +78,29 @@ def build(scene: Scene, *, mode: str, seed: int,
             "bounds_min": [round(float(v), 4) for v in allp.min(0)],
             "bounds_max": [round(float(v), 4) for v in allp.max(0)],
         })
+    instances = [{
+        "type": p.type,
+        "pos": list(p.pos),
+        "normal": list(p.normal),
+        "size": list(p.size),
+        "rot": p.rot,
+    } for p in (decal_placements or [])]
     return {
         "schema": version.MANIFEST_SCHEMA_VERSION,
         "generator": f"Patina {version.__version__}",
         "source": os.path.basename(scene.source_path or ""),
         "seed": seed,
         "mode": mode,
+        "theme": {
+            "name": getattr(theme, "name", "default"),
+            "palette": dict(getattr(theme, "palette", {}) or {}),
+        },
         "shader": shader or default_shader(),
         "surfaces": _surface_block(used, textures, mode),
+        "decals": {
+            "textures": dict(decal_textures or {}),
+            "instances": instances,
+        },
         "kitbash": kitbash,
         "stats": scene.stats(),
     }
@@ -106,3 +124,10 @@ def validate(manifest: dict) -> None:
     for role, spec in manifest.get("surfaces", {}).items():
         if "vertex_color" not in spec or "uv_channel" not in spec:
             raise jsonschema.ValidationError(f"surface {role!r} missing material spec")
+    # Cross-check: every placed decal resolves to a texture the addon can load.
+    dec = manifest.get("decals", {})
+    tex = dec.get("textures", {})
+    for inst in dec.get("instances", []):
+        if inst.get("type") not in tex:
+            raise jsonschema.ValidationError(
+                f"decal instance type {inst.get('type')!r} has no texture entry")

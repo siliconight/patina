@@ -50,8 +50,10 @@ class SurfaceRole(str, Enum):
     """
 
     FLOOR = "floor"
-    WALL = "wall"
+    WALL = "wall"                     # interior / undetermined vertical
+    EXTERIOR_WALL = "exterior_wall"   # vertical face on the shell's outer AABB
     CEILING = "ceiling"
+    ROOF = "roof"                     # up-facing face at the shell's top
     TRIM = "trim"
     UNKNOWN = "unknown"
 

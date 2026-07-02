@@ -45,6 +45,10 @@ _BASE_TINT = {
     SurfaceRole.CEILING: np.array([0.66, 0.66, 0.64], np.float32),
     SurfaceRole.TRIM:    np.array([0.68, 0.66, 0.64], np.float32),
     SurfaceRole.UNKNOWN: np.array([0.72, 0.72, 0.72], np.float32),
+    # New v0.2 roles default to their v0.1.x umbrella tints so the default
+    # theme's vertex colours are unchanged. Themed looks override these.
+    SurfaceRole.EXTERIOR_WALL: np.array([0.74, 0.74, 0.76], np.float32),
+    SurfaceRole.ROOF:          np.array([0.66, 0.66, 0.64], np.float32),
 }
 _AO_STRENGTH = 0.45
 _GRIME_STRENGTH = 0.25
@@ -347,13 +351,22 @@ def _height_grime(prim: Primitive, strength: float, height: float) -> np.ndarray
     return 1.0 - strength * t
 
 
-def vertex_color(scene: Scene, opts: NuanceOptions) -> None:
+def vertex_color(scene: Scene, opts: NuanceOptions,
+                 tints: dict[SurfaceRole, np.ndarray] | None = None) -> None:
+    """Bake role tint * edge-cavity AO * height grime into vertex colour.
+
+    ``tints`` optionally overrides the built-in per-role base tints (theme
+    palettes); roles absent from the override fall back to the defaults.
+    """
+    table = dict(_BASE_TINT)
+    if tints:
+        table.update({r: np.asarray(t, np.float32) for r, t in tints.items()})
     for mesh in scene.visual_meshes():
         for prim in mesh.primitives:
             if prim.face_roles is None:
                 raise RuntimeError("vertex_color requires surfaces.classify() first")
             roles = _vertex_roles(prim)
-            tint = np.array([_BASE_TINT[r] for r in roles], np.float32)   # (V,3)
+            tint = np.array([table[r] for r in roles], np.float32)   # (V,3)
             ao = _edge_cavity_ao(prim, opts.ao_strength)[:, None]
             grime = _height_grime(prim, opts.grime_strength, opts.grime_height)[:, None]
             rgb = np.clip(tint * ao * grime, 0.0, 1.0).astype(np.float32)

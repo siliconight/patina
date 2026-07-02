@@ -20,7 +20,7 @@ import os
 import shutil
 import sys
 
-from . import gltf_io, manifest, nuance, palette, surfaces, uvproject, version
+from . import decals, gltf_io, manifest, nuance, palette, surfaces, themes, uvproject, version
 from .mesh import Scene, SurfaceRole
 
 
@@ -59,31 +59,65 @@ def run(args: argparse.Namespace) -> dict:
         print("[patina] geometric bevel skipped (no bpy bridge); "
               "edge-cavity AO stands in.", file=sys.stderr)
 
+    theme = themes.load(args.theme)
+    result["theme"] = theme.name
+
     surfaces.classify(scene)
     if opts.vertex_color:
-        nuance.vertex_color(scene, opts)
+        tints = {SurfaceRole(r): rgb for r in (sr.value for sr in SurfaceRole)
+                 if (rgb := theme.tint_rgb(r)) is not None}
+        nuance.vertex_color(scene, opts, tints=tints or None)
 
     used_roles = {SurfaceRole(k) for k in surfaces.role_counts(scene)}
     textures_rel: dict[str, str] = {}
+    tex_dir = out_glb[:-4] + ".textures"
     if args.mode != "vertex-color":
         uvproject.project(scene, texel=args.texel)
         pal_opts = palette.PaletteOptions(
             mode=args.mode, size=args.size, posterize=args.posterize,
             byo_dir=args.textures, seed=args.seed)
-        tiles = palette.build_palette(used_roles, pal_opts)
+        tiles = palette.build_palette(used_roles, pal_opts, theme)
         if tiles:
-            tex_dir = out_glb[:-4] + ".textures"
             os.makedirs(tex_dir, exist_ok=True)
-            for role, data in tiles.items():
-                fname = f"{role}.png"
+            for key, data in tiles.items():
+                fname = f"{key}.png"
                 with open(os.path.join(tex_dir, fname), "wb") as fh:
                     fh.write(data)
-                textures_rel[role] = os.path.join(os.path.basename(tex_dir), fname)
+            # Roles map to their theme material key's tile (aliases share).
+            for r in used_roles:
+                key = theme.material_key(r.value)
+                if key in tiles:
+                    textures_rel[r.value] = os.path.join(
+                        os.path.basename(tex_dir), f"{key}.png")
+            result["textures_dir"] = tex_dir
+
+    # Decal pass (bashing brief step 3): seeded placements + posterized RGBA
+    # stamps, emitted through the manifest. Visual-only; the Godot addon
+    # instantiates them under a deletable PatinaDecals node.
+    placements: list[decals.Placement] = []
+    decal_tex_rel: dict[str, str] = {}
+    if theme.decals and not args.no_decals:
+        placements = decals.place(scene, theme, args.seed,
+                                  density_scale=args.decal_scale)
+        if placements:
+            ddir = os.path.join(tex_dir, "decals")
+            os.makedirs(ddir, exist_ok=True)
+            for dtype in decals.used_types(placements):
+                data = decals.generate_texture(dtype, args.seed,
+                                               levels=args.posterize)
+                with open(os.path.join(ddir, f"{dtype}.png"), "wb") as fh:
+                    fh.write(data)
+                decal_tex_rel[dtype] = os.path.join(
+                    os.path.basename(tex_dir), "decals", f"{dtype}.png")
+            result["decals"] = len(placements)
             result["textures_dir"] = tex_dir
 
     gltf_io.save_glb(scene, out_glb)
 
-    man = manifest.build(scene, mode=args.mode, seed=args.seed, textures=textures_rel)
+    man = manifest.build(scene, mode=args.mode, seed=args.seed,
+                         textures=textures_rel, theme=theme,
+                         decal_placements=placements,
+                         decal_textures=decal_tex_rel)
     manifest.validate(man)
     man_path = out_glb[:-4] + ".json"     # <name>.patina.json
     manifest.write(man, man_path)
@@ -115,7 +149,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "or byo (user texture folder)")
     p.add_argument("--textures", metavar="DIR", default=None,
                    help="byo mode: folder of low-res textures keyed by role "
-                        "(floor/wall/ceiling/trim)")
+                        "(floor/wall/ceiling/trim; exterior_wall/roof optional)")
+    p.add_argument("--theme", default="default", metavar="NAME|PATH",
+                   help="theme preset: builtin name "
+                        f"({', '.join(themes.builtin_names())}) or a theme "
+                        ".json path. default reproduces v0.1.x output.")
+    p.add_argument("--no-decals", action="store_true",
+                   help="skip the theme's decal pass")
+    p.add_argument("--decal-scale", type=float, default=1.0,
+                   help="decal density multiplier (1.0 = theme's values)")
     p.add_argument("--no-bevel", action="store_true",
                    help="disable bevel sub-step (budget control)")
     p.add_argument("--no-densify", action="store_true",
@@ -146,7 +188,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[patina] input not found: {args.input}", file=sys.stderr)
         return 2
     res = run(args)
-    print(f"[patina] {res.get('mode')} -> {res['output_glb']}")
+    print(f"[patina] {res.get('mode')} / theme={res.get('theme', 'default')} "
+          f"-> {res['output_glb']}")
+    if res.get("decals"):
+        print(f"[patina] decals: {res['decals']} placed")
     if "manifest" in res:
         print(f"[patina] manifest -> {res['manifest']}")
     s = res.get("stats", {})

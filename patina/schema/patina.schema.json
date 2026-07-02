@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Patina style manifest",
   "type": "object",
-  "required": ["schema", "generator", "source", "seed", "mode", "shader", "surfaces", "kitbash"],
+  "required": ["schema", "generator", "source", "seed", "mode", "theme", "shader", "surfaces", "decals", "kitbash"],
   "additionalProperties": false,
   "properties": {
     "schema": { "type": "string" },
@@ -10,6 +10,38 @@
     "source": { "type": "string" },
     "seed": { "type": "integer" },
     "mode": { "type": "string", "enum": ["vertex-color", "procedural", "byo"] },
+    "theme": {
+      "type": "object",
+      "required": ["name", "palette"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "palette": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "decals": {
+      "type": "object",
+      "required": ["textures", "instances"],
+      "additionalProperties": false,
+      "properties": {
+        "textures": { "type": "object", "additionalProperties": { "type": "string" } },
+        "instances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "pos", "normal", "size", "rot"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string" },
+              "pos": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+              "normal": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+              "size": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+              "rot": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
     "shader": {
       "type": "object",
       "required": ["name", "vertex_jitter", "affine_strength", "color_depth", "dither", "ambient", "fog"],

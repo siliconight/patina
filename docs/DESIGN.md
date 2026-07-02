@@ -30,8 +30,8 @@ automatable ones and leaves the two craft steps to humans:
 Two halves mirroring Deli Counter:
 
 * **Offline asset pass (Python)** — `patina/`. Reads the `.glb` + gameplay.json,
-  runs `nuance → uvproject → palette`, writes `shell.patina.glb` +
-  `shell.patina.json`. Fully verifiable without an engine.
+  runs `nuance → uvproject → palette → decals` under a `--theme` preset, writes
+  `shell.patina.glb` + `shell.patina.json`. Fully verifiable without an engine.
 * **Godot addon (GDScript)** — `godot/addon/patina/`. Imports the styled `.glb`,
   reads the manifest, assigns the PS1 shader + material params per surface, sets
   white ambient + fog. First-run-in-engine.
