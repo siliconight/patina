@@ -22,7 +22,7 @@ import sys
 
 from . import (anchors, banding, decals, families, gltf_io, manifest, nuance,
                overrides, palette, skins, slots, surfaces, templates, themes,
-               uvproject, version)
+               trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
 
 
@@ -323,6 +323,45 @@ def run(args: argparse.Namespace) -> dict:
         result["anchor_counts"] = anchor_counts
         result["anchor_space"] = space
 
+        # v0.11: dressing manifest — turn anchors into Zoo non-collision cover
+        # build orders (trim piece + UV region), in the same space as the
+        # anchors. Emits the trim atlas too. --trim-sheet emits the atlas alone.
+        if args.dressing:
+            sheet_bytes, regions = trim.build_sheet(
+                size=args.size, seed=args.seed, family=family)
+            sheet_path = out_glb[:-4] + ".trim.png"
+            with open(sheet_path, "wb") as fh:
+                fh.write(sheet_bytes)
+            dm = trim.dressing_manifest(
+                emit_list, regions, seed=args.seed,
+                source=os.path.basename(out_glb),
+                sheet_file=os.path.basename(sheet_path),
+                space=space, building_id=building_id)
+            dpath = out_glb[:-4] + ".dressing.json"
+            with open(dpath, "w", encoding="utf-8") as fh:
+                json.dump(dm, fh, indent=2, sort_keys=True)
+                fh.write("\n")
+            result["trim_sheet"] = sheet_path
+            result["dressing"] = {"orders": len(dm["orders"]),
+                                  "covers": dm["counts"], "sidecar": dpath}
+
+    # Trim sheet without dressing (atlas only — the texture half on its own).
+    if args.trim_sheet and not result.get("trim_sheet"):
+        import json as _json
+        sheet_bytes, regions = trim.build_sheet(
+            size=args.size, seed=args.seed, family=family)
+        sheet_path = out_glb[:-4] + ".trim.png"
+        with open(sheet_path, "wb") as fh:
+            fh.write(sheet_bytes)
+        rpath = out_glb[:-4] + ".trim.json"
+        with open(rpath, "w", encoding="utf-8") as fh:
+            _json.dump({"schema": "patina-trim/1",
+                        "trim_sheet": os.path.basename(sheet_path),
+                        "regions": trim.regions_dict(regions)}, fh,
+                       indent=2, sort_keys=True)
+            fh.write("\n")
+        result["trim_sheet"] = sheet_path
+
     man = manifest.build(scene, mode=args.mode, seed=args.seed,
                          textures=textures_rel, theme=theme,
                          decal_placements=placements,
@@ -404,6 +443,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "custom_data) — breaks modular repetition")
     p.add_argument("--slot-variation-strength", type=float, default=0.12,
                    help="per-slot brightness jitter amount (0-0.5, default 0.12)")
+    p.add_argument("--trim-sheet", action="store_true",
+                   help="generate a family-locked trim atlas (roof edge, panel "
+                        "seam, pipe run, corner guard, foundation, conduit, "
+                        "flashing) to <out>.trim.png + a UV-region map")
+    p.add_argument("--dressing", action="store_true",
+                   help="with --anchors: emit <out>.dressing.json — per-anchor "
+                        "non-collision cover build orders (trim piece + UV "
+                        "region + position) for Zoo to build; emits the trim "
+                        "atlas too")
     p.add_argument("--no-slots", action="store_true",
                    help="ignore a sibling DC slots.json even when present "
                         "(fall back to whole-mesh, geometry-derived styling)")
@@ -471,6 +519,12 @@ def main(argv: list[str] | None = None) -> int:
           f"-> {res['output_glb']}")
     if res.get("decals"):
         print(f"[patina] decals: {res['decals']} placed")
+    if res.get("trim_sheet"):
+        print(f"[patina] trim sheet -> {res['trim_sheet']}")
+    if res.get("dressing"):
+        dg = res["dressing"]
+        summary = ", ".join(f"{k}:{v}" for k, v in sorted(dg["covers"].items()))
+        print(f"[patina] dressing -> {dg['sidecar']} ({dg['orders']} orders: {summary})")
     if res.get("slot_variation"):
         sv = res["slot_variation"]
         print(f"[patina] slot variation: {sv['faces_varied']} faces, "

@@ -104,6 +104,8 @@ import the `.glb`, click **Apply PS1 style**.
 | `--start-skins` | Write Texpaint-style triangle-unique start skins from authored UV0 (model skinning; UV0-less meshes are skipped). |
 | `--skin-size` | Start-skin sheet size in px (default 256). |
 | `--slot-variation` | With a DC `slots.json`: bake deterministic per-slot colour variation (keyed by `slot_id`) into vertex colour and emit `<out>.instances.json` — breaks modular repetition. |
+| `--trim-sheet` | Generate a family-locked trim atlas (roof edge, panel seam, pipe run, corner guard, foundation, conduit, flashing) + UV-region map. |
+| `--dressing` | With `--anchors`: emit `<out>.dressing.json` — per-anchor non-collision cover build orders (trim piece + UV region + position) for Zoo. |
 | `--slot-variation-strength` | Per-slot brightness jitter (0–0.5, default 0.12). |
 | `--no-slots` | Ignore a sibling DC `slots.json` even when present (fall back to whole-mesh geometry-derived styling). |
 | `--anchor-patina-space` | Emit anchors in Patina's baked Y-up space instead of DC's Blender Z-up (only relevant with a `slots.json`). |
@@ -132,6 +134,7 @@ import the `.glb`, click **Apply PS1 style**.
 | Placement anchors (v0.8) | **Offline-verified.** World-space dressing/light/prop placement in a sidecar for downstream geometry tools; deterministic; zero geometry/collision impact; opt-in. |
 | Modular alignment (v0.9) | **Offline-verified on real DC builds.** Reads `slots.json`; auto-detects up-axis (Y-up DC glTF vs legacy Z-up); anchors in DC's Blender space; `delco` theme → `delco_faded` family. Legacy Z-up byte-identical. |
 | Per-slot variation (v0.10) | **Offline-verified on real DC builds.** Deterministic per-`slot_id` colour variation baked to vertex colour + emitted as `instances.json` (DC per-instance shape); family-locked; opt-in. |
+| Trim sheets + dressing (v0.11) | **Patina half offline-verified.** Family-locked trim atlas + per-anchor non-collision cover build orders for Zoo (`dressing.json`). Zoo consumer is a written contract, not yet built. |
 | Per-key art-bash overrides (v0.4) | **Offline-verified.** Image/albedo/tint/pattern per key; no-override byte-identical; saved sessions in the manifest. |
 | Geometric bevel | **Deferred / bridged.** Off in the pure-Python path; bridges to Deli Counter's bpy pass when Blender is importable. Edge-cavity AO stands in for the look. |
 | PS1 shader + Godot addon (P2) | **First-run-in-engine.** Drafted against known-good patterns; walk in Godot 4.7 to confirm. |
@@ -429,6 +432,34 @@ patina gs_corner_station.glb --mode procedural --slot-variation
 
 Alignment is additive and auto-detected: no slots.json + Z-up geometry -> output
 is byte-identical to v0.8. `--slot-variation` is opt-in and needs a slots.json.
+
+## Trim sheets + dressing (v0.11): the texture half of Zoo dressing
+
+The geometry-bearing art-pass items (facade panels, trim caps, roofline vents)
+are Zoo's to build — but they need a *texture atlas* and a *placement contract*,
+which are Patina's. v0.11 supplies both, so Patina and Zoo can dress a greybox
+together without Patina generating a single vertex.
+
+- `--trim-sheet` packs a **trim atlas**: roof edge, panel seam, pipe run, corner
+  guard, foundation, conduit, flashing — each a family-locked posterized strip —
+  into one power-of-two PNG with a per-piece UV-region map. This is the Q2/Steed
+  trim sheet done as texture.
+- `--dressing` (with `--anchors`) turns anchors into **Zoo build orders**: per
+  anchor, a `dressing.json` record naming the trim piece, its UV region, the
+  position/normal (in DC's Blender Z-up space when a slots.json is present), a
+  suggested cover kind, and `collision: none`.
+
+```bash
+patina gs_corner_station.glb --mode procedural --anchors --dressing
+# -> trim sheet -> ...trim.png   (family-locked atlas)
+# -> dressing -> ...dressing.json (211 orders: edge_strip:64, curb:64, base_course:50, conduit_run:33)
+```
+
+Patina places and skins; **Zoo builds** the `collision: none` cover meshes from
+the orders. Patina ships zero geometry and never touches collision. The Zoo
+consumer recipe is specced in `docs/DRESSING_CONTRACT.md` and remains to be
+built on the Zoo side (plus the in-engine walk to confirm covers render right
+over DC's collision).
 
 ## Relationship to Deli Counter
 

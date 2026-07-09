@@ -3,6 +3,35 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.11.0] — 2026-07-09
+
+The "trim sheets + dressing" release — the texture half of Zoo-built facade
+dressing. Patina supplies a trim atlas and per-anchor non-collision cover build
+orders; Zoo builds the geometry. Closes the loop the v0.8 anchors opened.
+
+### Added
+- **Trim-sheet atlas** (`--trim-sheet`, `patina/trim.py`): a family-locked
+  posterized atlas of trim strips — roof edge, panel seam, pipe run, corner
+  guard, foundation, conduit, flashing — packed into one power-of-two PNG with
+  a per-piece UV-region map (`<out>.trim.png` + `<out>.trim.json`). Reuses the
+  pattern generators and the family lock, so trim shares the building palette.
+  The Q2/Steed trim sheet, done as texture (Patina's lane).
+- **Dressing manifest** (`--dressing`, with `--anchors`): turns anchors into
+  Zoo build orders — per anchor, a `<out>.dressing.json` record with the trim
+  piece, its UV region, the position/normal (in the same DC Blender Z-up space
+  as the anchors when a slots.json is present), a suggested cover kind
+  (`edge_strip` / `base_course` / `curb` / `conduit_run`), and
+  `collision: none`. Patina places + skins; Zoo builds the cover mesh.
+
+### Guarantees / scope
+- Patina still ships **zero geometry**: the trim sheet is a PNG, the dressing
+  manifest is JSON. Covers are marked non-collision so the greybox collision is
+  never touched. Deterministic; family-locked; opt-in.
+- The Zoo consumer (a recipe that reads `dressing.json` and builds
+  `collision: none` cover meshes) is a **written contract**
+  (`docs/DRESSING_CONTRACT.md`), not yet implemented in Zoo — the Patina half
+  ships tested; the Zoo recipe and the in-engine walk remain.
+
 ## [0.10.0] — 2026-07-09
 
 The "per-slot variation" release — completes the modular alignment by targeting

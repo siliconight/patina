@@ -151,6 +151,13 @@ CLI, Godot side) stays.
   `<out>.instances.json` per-slot color/custom_data in DC's placements shape
   (instanced bake). Family-locked so repetition-breaking keeps cohesion. Opt-in;
   needs a slots.json.
+* **7. Trim sheets + dressing (v0.11)** — `trim.py`, `--trim-sheet` /
+  `--dressing`. A family-locked posterized trim atlas (roof edge / panel seam /
+  pipe run / corner guard / foundation / conduit / flashing) with a per-piece UV
+  map, plus a dressing manifest that turns anchors into Zoo non-collision cover
+  build orders (trim piece + UV region + Blender-space position + `collision:
+  none`). Patina supplies texture + placement; Zoo builds geometry. Zero geometry
+  in Patina; the Zoo consumer is specced in docs/DRESSING_CONTRACT.md.
 * **5.4 PS1 shader (Godot)** — vertex jitter, approximate affine, colour-depth +
   dither, vertex-lit + white ambient, distance fog. In-house shader.
 

@@ -6,7 +6,7 @@ revision that produced it. It is *fixed per release* (never a timestamp), which
 is what keeps output byte-identical across runs on the same code.
 """
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 # Manifest schema version. Bump independently of the tool version when the
 # .patina.json shape changes in a backward-incompatible way.
