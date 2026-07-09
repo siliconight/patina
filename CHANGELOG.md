@@ -3,6 +3,30 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.13.1] — 2026-07-09
+
+Pipeline smoke tests — prove the whole art-pass flow is repeatable before
+building levels on it.
+
+### Added
+- **`smoke_offline.py`** — runs every stage that doesn't need Blender/Godot
+  (DC manifest → Patina full art-pass → output integrity → cross-tool contracts
+  → composite headroom) and *asserts* each output is valid: collision tri-count
+  unchanged, vertex colour in range and not crushed, dressing covers all
+  non-collision, instances/dressing schemas correct, the Zoo planner accepts the
+  dressing manifest, and the preview reports OK. Fails loudly at the exact stage
+  that drifts. Verified it both passes on a real `gs_corner_station` build and
+  fails on missing/broken input.
+- **`smoke_walk.ps1`** — the on-machine half: DC → Zoo build-kit → Patina → Zoo
+  dress with a hard pass/fail gate after each stage (stops with a clear message
+  instead of cascading), then opens Lux. Resolves Blender/Godot exes from their
+  folders; cleans stale output first.
+
+### Fixed
+- The manifest now records the **`depth`** preset applied (it was applied but
+  not recorded — caught by the smoke test). Downstream tools reading the
+  manifest now know the depth used.
+
 ## [0.13.0] — 2026-07-09
 
 The "look preview" release — see the composite before the engine walk.

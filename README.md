@@ -502,6 +502,27 @@ output is byte-identical to v0.11. On the geometry side, Zoo (0.22.0) bakes a
 matching cool-up / warm-down directional ambient into module vertex colour, so
 modules have form before Patina runs.
 
+## Smoke tests — is the pipeline repeatable?
+
+Before building levels on the flow, prove it holds end to end:
+
+```bash
+# offline: DC manifest -> Patina art-pass -> integrity + contracts + headroom
+python smoke_offline.py <deli_counter_build_dir> --zoo <zoo_repo>
+```
+
+```powershell
+# on-machine: DC -> Zoo build-kit -> Patina -> Zoo dress, gated at each stage, then Lux
+.\smoke_walk.ps1
+```
+
+`smoke_offline.py` asserts each output is *valid*, not just present — collision
+untouched, vertex colour in range and uncrushed, dressing covers all
+non-collision, schemas correct, the Zoo planner accepts the dressing manifest,
+and the composite preview reports OK. It fails at the exact stage that drifts.
+`smoke_walk.ps1` gates the Blender/Godot half the same way. Run these after any
+change to DC specs, Zoo species, or the coordinate conventions.
+
 ## Relationship to Deli Counter
 
 Patina depends on Deli Counter's **output contract**, not its code: it reads

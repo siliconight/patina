@@ -59,7 +59,7 @@ def build(scene: Scene, *, mode: str, seed: int,
           overrides: dict[str, str] | None = None,
           family=None,
           anchor_counts: dict[str, int] | None = None,
-          slot_manifest=None) -> dict:
+          slot_manifest=None, depth: str | None = None) -> dict:
     textures = textures or {}
     used = {r for r in (SurfaceRole(k) for k in role_counts(scene))}
     kitbash = []
@@ -119,6 +119,7 @@ def build(scene: Scene, *, mode: str, seed: int,
                       "theme": slot_manifest.theme,
                       "slot_count": len(slot_manifest.slots)}}
            if slot_manifest is not None else {}),
+        **({"depth": depth} if depth else {}),
     }
 
 

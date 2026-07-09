@@ -326,6 +326,10 @@
           "type": "integer"
         }
       }
+    },
+    "depth": {
+      "type": "string",
+      "description": "depth preset applied (v0.13+)"
     }
   }
 }

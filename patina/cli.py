@@ -410,7 +410,8 @@ def run(args: argparse.Namespace) -> dict:
                          overrides=result.get("overrides"),
                          family=family,
                          anchor_counts=anchor_counts or None,
-                         slot_manifest=slot_manifest)
+                         slot_manifest=slot_manifest,
+                         depth=result.get("depth"))
     manifest.validate(man)
     man_path = out_glb[:-4] + ".json"     # <name>.patina.json
     manifest.write(man, man_path)
