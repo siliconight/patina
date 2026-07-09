@@ -78,7 +78,14 @@ A recipe `dress_from_manifest(dressing_json)` that, per order:
 ## Status
 
 - Patina half (atlas + manifest): implemented and tested (v0.11).
-- Zoo half (the `dress_from_manifest` recipe): **not yet built** — this doc is
-  the spec.
-- In-engine walk: still required to confirm covers render correctly over DC's
-  collision in Godot (the standing Patina caveat).
+- Zoo half: **built (Zoo 0.21.0)** — `--dress <building>.dressing.json` →
+  `core/dressing.py` (pure planner) + `recipes/dress_cover.py` +
+  `genome/species/dress_cover.json` + `bpylayer/build.build_dressing`. Reads
+  this manifest, converts space when needed, resolves theme → style, drops any
+  non-`none` collision order, and builds one `<building>_dressing.glb` of
+  non-collision covers. 13 pure tests green; the geometry build needs Blender.
+- Remaining: (a) UV-region → exported-mesh UV wiring is carried in the order and
+  assigned in the recipe, to be confirmed in Blender; (b) the in-engine walk to
+  confirm covers render correctly over DC's collision in Godot (the standing
+  caveat). The `space` round-trip and non-collision guarantee are verified
+  offline against a real `gs_corner_station` manifest (211 orders).

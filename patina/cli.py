@@ -20,9 +20,9 @@ import os
 import shutil
 import sys
 
-from . import (anchors, banding, decals, families, gltf_io, manifest, nuance,
-               overrides, palette, skins, slots, surfaces, templates, themes,
-               trim, uvproject, version)
+from . import (anchors, banding, decals, depth as depth_mod, families,
+               gltf_io, manifest, nuance, overrides, palette, skins, slots,
+               surfaces, templates, themes, trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
 
 
@@ -37,6 +37,20 @@ def _visual_z_range(scene: Scene, up_axis: int = 2) -> tuple[float, float]:
                 z = prim.positions[:, up_axis]
                 lo, hi = min(lo, float(z.min())), max(hi, float(z.max()))
     return (0.0, 1.0) if lo == np.inf else (lo, hi)
+
+
+def _visual_centroid(scene: Scene):
+    """Centre of the visual AABB — the radial basis for atmospheric recession."""
+    import numpy as np
+    lo = np.full(3, np.inf)
+    hi = np.full(3, -np.inf)
+    for mesh in scene.visual_meshes():
+        for prim in mesh.primitives:
+            if prim.vertex_count():
+                lo = np.minimum(lo, prim.positions.min(0))
+                hi = np.maximum(hi, prim.positions.max(0))
+    return np.zeros(3, np.float32) if not np.isfinite(lo).all() \
+        else ((lo + hi) / 2.0).astype(np.float32)
 
 
 def _default_out(in_path: str) -> str:
@@ -171,6 +185,15 @@ def run(args: argparse.Namespace) -> dict:
     if bands:
         result["bands"] = sorted(r.value for r in bands)
 
+    # Depth cues (v0.12): saturated shadow gradients + atmospheric recession.
+    # --depth PRESET wins; else a theme's "depth" preset name; else off.
+    depth_opts = depth_mod.DepthOptions()
+    depth_name = args.depth if args.depth is not None else theme.depth
+    if depth_name and depth_name != "off":
+        depth_opts = depth_mod.DepthOptions.preset(depth_name)
+        result["depth"] = depth_name
+    depth_centroid = _visual_centroid(scene) if depth_opts.active() else None
+
     if opts.vertex_color:
         tints = {SurfaceRole(r): rgb for r in (sr.value for sr in SurfaceRole)
                  if (rgb := theme.tint_rgb(r)) is not None}
@@ -178,7 +201,8 @@ def run(args: argparse.Namespace) -> dict:
             tints = {r: families.lock_tint(rgb, family) for r, rgb in tints.items()}
         nuance.vertex_color(scene, opts, tints=tints or None,
                             bands=bands or None, z_range=z_range,
-                            up_axis=up_axis)
+                            up_axis=up_axis, depth_opts=depth_opts,
+                            centroid=depth_centroid)
 
     # Per-slot variation (v0.10): break modular repetition. With a slots.json
     # and --slot-variation, bake a deterministic per-slot brightness factor
@@ -443,6 +467,10 @@ def build_parser() -> argparse.ArgumentParser:
                         "custom_data) — breaks modular repetition")
     p.add_argument("--slot-variation-strength", type=float, default=0.12,
                    help="per-slot brightness jitter amount (0-0.5, default 0.12)")
+    p.add_argument("--depth", metavar="PRESET", default=None,
+                   help="layer colour-theory depth cues (saturated shadow "
+                        "gradients + atmospheric recession): a preset name "
+                        f"({', '.join(depth_mod.preset_names())}) or 'off'")
     p.add_argument("--trim-sheet", action="store_true",
                    help="generate a family-locked trim atlas (roof edge, panel "
                         "seam, pipe run, corner guard, foundation, conduit, "
@@ -519,6 +547,8 @@ def main(argv: list[str] | None = None) -> int:
           f"-> {res['output_glb']}")
     if res.get("decals"):
         print(f"[patina] decals: {res['decals']} placed")
+    if res.get("depth"):
+        print(f"[patina] depth cues: {res['depth']} (saturated shadows + atmosphere)")
     if res.get("trim_sheet"):
         print(f"[patina] trim sheet -> {res['trim_sheet']}")
     if res.get("dressing"):

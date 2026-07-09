@@ -356,7 +356,8 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
                  tints: dict[SurfaceRole, np.ndarray] | None = None,
                  bands: dict | None = None,
                  z_range: tuple[float, float] | None = None,
-                 up_axis: int = 2) -> None:
+                 up_axis: int = 2,
+                 depth_opts=None, centroid: np.ndarray | None = None) -> None:
     """Bake role tint * edge-cavity AO * height grime into vertex colour.
 
     ``tints`` optionally overrides the built-in per-role base tints (theme
@@ -367,11 +368,19 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
     colour chosen by their global height fraction instead of the flat role
     tint. ``z_range`` is the global visual-AABB (zmin, zmax); required when
     ``bands`` is given so bands land at consistent world heights.
+
+    ``depth_opts`` (v0.12, a depth.DepthOptions) optionally layers colour-theory
+    depth cues: the AO/grime shadow weight drives a *saturated* shadow gradient
+    (not just value darkening), and a height+radial recession weight pulls
+    receding surfaces toward the cool atmospheric target. ``centroid`` is the
+    visual AABB centre, needed for the radial term. Inactive/None => unchanged.
     """
-    from . import banding
+    from . import banding, depth as depth_mod
     table = dict(_BASE_TINT)
     if tints:
         table.update({r: np.asarray(t, np.float32) for r, t in tints.items()})
+    use_depth = depth_opts is not None and depth_opts.active() \
+        and z_range is not None
     for mesh in scene.visual_meshes():
         for prim in mesh.primitives:
             if prim.face_roles is None:
@@ -381,9 +390,23 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
             if bands and z_range is not None:
                 tint = banding.vertex_band_tints(prim.positions, roles, bands,
                                                  z_range, tint, up_axis=up_axis)
-            ao = _edge_cavity_ao(prim, opts.ao_strength)[:, None]
+            ao = _edge_cavity_ao(prim, opts.ao_strength)
             grime = _height_grime(prim, opts.grime_strength, opts.grime_height,
-                                  up_axis)[:, None]
-            rgb = np.clip(tint * ao * grime, 0.0, 1.0).astype(np.float32)
+                                  up_axis)
+
+            if use_depth:
+                # shadow weight: how much this vertex is darkened by AO+grime,
+                # renormalised to 0..1 so it drives the saturated gradient.
+                shadow = np.clip((1.0 - ao) / max(opts.ao_strength, 1e-6) * 0.6
+                                 + (1.0 - grime) / max(opts.grime_strength, 1e-6)
+                                 * 0.4, 0.0, 1.0)
+                tint = depth_mod.apply_shadow_gradient(tint, shadow, depth_opts)
+                if centroid is not None:
+                    recede = depth_mod.recession_weight(
+                        prim.positions, up_axis, z_range, centroid, depth_opts)
+                    tint = depth_mod.apply_atmospheric(tint, recede, depth_opts)
+
+            rgb = np.clip(tint * ao[:, None] * grime[:, None], 0.0, 1.0
+                          ).astype(np.float32)
             alpha = np.ones((prim.vertex_count(), 1), np.float32)
             prim.color = np.hstack([rgb, alpha])

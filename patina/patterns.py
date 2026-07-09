@@ -73,6 +73,10 @@ def validate_spec(spec: dict, where: str) -> None:
         v = spec["jitter"]
         if not isinstance(v, (int, float)) or not (0.0 <= v <= 0.5):
             raise ValueError(f"{where}: jitter must be 0..0.5")
+    if "temp" in spec:
+        v = spec["temp"]
+        if not isinstance(v, (int, float)) or not (0.0 <= v <= 0.5):
+            raise ValueError(f"{where}: temp must be 0..0.5")
     if "groove" in spec:
         g = spec["groove"]
         if not isinstance(g, str) or len(g.strip().lstrip("#")) != 6:
@@ -108,11 +112,17 @@ def tileable_noise(size: int, rng: np.random.Generator, octaves: int = 3) -> np.
 
 
 def _cell_colors(rng: np.random.Generator, ny: int, nx: int,
-                 base: np.ndarray, variants: list, jitter: float) -> np.ndarray:
-    """(ny, nx, 3) per-cell colour: variant pick + brightness jitter.
+                 base: np.ndarray, variants: list, jitter: float,
+                 temp: float = 0.0) -> np.ndarray:
+    """(ny, nx, 3) per-cell colour: variant pick + brightness jitter + optional
+    warm/cool temperature jitter.
 
     One array draw each, in fixed order, so the result is independent of any
     caller iteration order (the determinism module's requirement).
+
+    ``temp`` (0..0.5) adds Jansson's "alternate a warm and dark colour" cue:
+    per-cell the red channel is nudged up and blue down (warm) or vice-versa
+    (cool), so a tiled surface reads richer than a monotone brightness jitter.
     """
     if variants:
         idx = rng.integers(0, len(variants), size=(ny, nx))
@@ -120,7 +130,12 @@ def _cell_colors(rng: np.random.Generator, ny: int, nx: int,
     else:
         cols = np.tile(base.astype(np.float32), (ny, nx, 1))
     j = rng.uniform(-jitter, jitter, size=(ny, nx, 1)).astype(np.float32)
-    return np.clip(cols * (1.0 + j), 0.0, 1.0)
+    cols = cols * (1.0 + j)
+    if temp:
+        t = rng.uniform(-temp, temp, size=(ny, nx)).astype(np.float32)
+        warm = np.stack([t, np.zeros_like(t), -t], axis=2)   # +R/-B warm, inverse cool
+        cols = cols + warm
+    return np.clip(cols, 0.0, 1.0)
 
 
 def _grid(size: int):
@@ -145,11 +160,12 @@ def _pat_tile(spec, size, rng, base, variants):
     cells = int(spec.get("cells", 4))
     line_px = int(spec.get("line_px", 2))
     jitter = float(spec.get("jitter", 0.08))
+    temp = float(spec.get("temp", 0.0))
     vv, uu = _grid(size)
     ix = np.minimum((uu * cells).astype(int), cells - 1)
     iy = np.minimum((vv * cells).astype(int), cells - 1)
     fx, fy = uu * cells - ix, vv * cells - iy
-    img = _cell_colors(rng, cells, cells, base, variants, jitter)[iy, ix]
+    img = _cell_colors(rng, cells, cells, base, variants, jitter, temp)[iy, ix]
     g = line_px * cells / size
     img[(fx < g) | (fy < g)] = _groove_rgb(spec, base)
     return img
@@ -160,6 +176,7 @@ def _pat_checker(spec, size, rng, base, variants):
     cells = int(spec.get("cells", 4))
     cells += cells % 2                       # even count wraps seamlessly
     jitter = float(spec.get("jitter", 0.06))
+    temp = float(spec.get("temp", 0.0))
     vv, uu = _grid(size)
     ix = np.minimum((uu * cells).astype(int), cells - 1)
     iy = np.minimum((vv * cells).astype(int), cells - 1)
@@ -180,6 +197,7 @@ def _pat_block(spec, size, rng, base, variants):
     cols = int(spec.get("cols", 3))
     line_px = int(spec.get("line_px", 2))
     jitter = float(spec.get("jitter", 0.08))
+    temp = float(spec.get("temp", 0.0))
     vv, uu = _grid(size)
     iy = np.minimum((vv * rows).astype(int), rows - 1)
     fy = vv * rows - iy
@@ -187,7 +205,7 @@ def _pat_block(spec, size, rng, base, variants):
     xs = uu * cols + (iy % 2) * 0.5
     ix = xs.astype(int) % cols
     fx = xs - np.floor(xs)
-    img = _cell_colors(rng, rows, cols, base, variants, jitter)[iy, ix]
+    img = _cell_colors(rng, rows, cols, base, variants, jitter, temp)[iy, ix]
     gx, gy = line_px * cols / size, line_px * rows / size
     img[(fx < gx) | (fy < gy)] = _groove_rgb(spec, base)
     return img
@@ -198,10 +216,11 @@ def _pat_panel(spec, size, rng, base, variants):
     cols = int(spec.get("cols", 4))
     line_px = int(spec.get("line_px", 1))
     jitter = float(spec.get("jitter", 0.05))
+    temp = float(spec.get("temp", 0.0))
     vv, uu = _grid(size)
     ix = np.minimum((uu * cols).astype(int), cols - 1)
     fx = uu * cols - ix
-    img = _cell_colors(rng, 1, cols, base, variants, jitter)[np.zeros_like(ix), ix]
+    img = _cell_colors(rng, 1, cols, base, variants, jitter, temp)[np.zeros_like(ix), ix]
     g = line_px * cols / size
     img[fx < g] = _groove_rgb(spec, base)
     return img
@@ -212,10 +231,11 @@ def _pat_plank(spec, size, rng, base, variants):
     rows = int(spec.get("rows", 5))
     line_px = int(spec.get("line_px", 1))
     jitter = float(spec.get("jitter", 0.10))
+    temp = float(spec.get("temp", 0.0))
     vv, uu = _grid(size)
     iy = np.minimum((vv * rows).astype(int), rows - 1)
     fy = vv * rows - iy
-    img = _cell_colors(rng, rows, 1, base, variants, jitter)[iy, np.zeros_like(iy)]
+    img = _cell_colors(rng, rows, 1, base, variants, jitter, temp)[iy, np.zeros_like(iy)]
     # Grain: integer-frequency sinusoids along u, phase per board (wraps in u
     # exactly; boards are discrete so v wraps too).
     freqs = rng.integers(6, 14, size=2)

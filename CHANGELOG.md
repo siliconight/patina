@@ -3,6 +3,42 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.12.0] — 2026-07-09
+
+The "depth & cohesion" release — colour-theory shading instead of flat value
+multiply. Distilled from Arne Jansson's PSG tutorial and the depth/colour-theory
+sources: shadows should gain *saturation* (not just darkness), receding surfaces
+should drift toward a cool atmospheric grey (plane separation), and texture
+should alternate warm/cool (not only brightness). A PS1-era look has no
+real-time GI, so these depth cues are baked into vertex colour and tiles on
+purpose — a deliberate departure from a strict unlit PBR albedo.
+
+### Added
+- **Depth pass** (`patina/depth.py`, `--depth PRESET`): layered over the nuance
+  vertex-colour pass.
+  - *Saturated shadow gradient* — the AO/grime shadow weight now drives a
+    saturation gain and a warm/cool hue bias into shadow, not just value
+    darkening (Jansson's "saturated gradients").
+  - *Atmospheric recession* — a height + radial-distance weight pulls receding
+    surfaces toward a cool desaturated target, separating foreground/background
+    planes.
+  - Presets `delco` / `exterior` / `off`; a theme may declare `"depth": "delco"`.
+- **Texture temperature** (`patterns.py`, pattern `temp` 0..0.5): per-cell
+  jitter can nudge warm/cool, not only brightness, so tiled surfaces read richer
+  (Jansson's warm/dark alternation).
+
+### Unchanged by construction
+- Depth is opt-in: no `--depth`, no theme `depth`, and `temp` absent → vertex
+  colour and tiles are byte-identical to v0.11 (pinned by
+  `test_depth_off_byte_identical` and `test_pattern_temp_zero_identical`).
+- Deterministic. Verified on delco: mean vertex saturation rises (shadows gain
+  colour) with depth on, and the warm/cool spread widens with `temp`.
+
+### Companion (Zoo 0.22.0)
+- Zoo bakes an optional **directional ambient** (cool-from-above / warm-fill-
+  below) into architectural-module vertex colour, so modules read with form
+  before Patina runs — the same depth-from-ambient cue on the geometry side.
+
 ## [0.11.0] — 2026-07-09
 
 The "trim sheets + dressing" release — the texture half of Zoo-built facade

@@ -104,6 +104,7 @@ import the `.glb`, click **Apply PS1 style**.
 | `--start-skins` | Write Texpaint-style triangle-unique start skins from authored UV0 (model skinning; UV0-less meshes are skipped). |
 | `--skin-size` | Start-skin sheet size in px (default 256). |
 | `--slot-variation` | With a DC `slots.json`: bake deterministic per-slot colour variation (keyed by `slot_id`) into vertex colour and emit `<out>.instances.json` — breaks modular repetition. |
+| `--depth` | Layer colour-theory depth cues (saturated shadow gradients + atmospheric recession): a preset name (`delco`, `exterior`) or `off`. |
 | `--trim-sheet` | Generate a family-locked trim atlas (roof edge, panel seam, pipe run, corner guard, foundation, conduit, flashing) + UV-region map. |
 | `--dressing` | With `--anchors`: emit `<out>.dressing.json` — per-anchor non-collision cover build orders (trim piece + UV region + position) for Zoo. |
 | `--slot-variation-strength` | Per-slot brightness jitter (0–0.5, default 0.12). |
@@ -134,7 +135,8 @@ import the `.glb`, click **Apply PS1 style**.
 | Placement anchors (v0.8) | **Offline-verified.** World-space dressing/light/prop placement in a sidecar for downstream geometry tools; deterministic; zero geometry/collision impact; opt-in. |
 | Modular alignment (v0.9) | **Offline-verified on real DC builds.** Reads `slots.json`; auto-detects up-axis (Y-up DC glTF vs legacy Z-up); anchors in DC's Blender space; `delco` theme → `delco_faded` family. Legacy Z-up byte-identical. |
 | Per-slot variation (v0.10) | **Offline-verified on real DC builds.** Deterministic per-`slot_id` colour variation baked to vertex colour + emitted as `instances.json` (DC per-instance shape); family-locked; opt-in. |
-| Trim sheets + dressing (v0.11) | **Patina half offline-verified.** Family-locked trim atlas + per-anchor non-collision cover build orders for Zoo (`dressing.json`). Zoo consumer is a written contract, not yet built. |
+| Trim sheets + dressing (v0.11) | **Patina half offline-verified;** Zoo consumer built (Zoo 0.21.0). Family-locked trim atlas + per-anchor non-collision cover build orders. |
+| Depth & cohesion (v0.12) | **Offline-verified.** Saturated shadow gradients + atmospheric recession baked to vertex colour; warm/cool texture temperature; opt-in, byte-identical off. |
 | Per-key art-bash overrides (v0.4) | **Offline-verified.** Image/albedo/tint/pattern per key; no-override byte-identical; saved sessions in the manifest. |
 | Geometric bevel | **Deferred / bridged.** Off in the pure-Python path; bridges to Deli Counter's bpy pass when Blender is importable. Edge-cavity AO stands in for the look. |
 | PS1 shader + Godot addon (P2) | **First-run-in-engine.** Drafted against known-good patterns; walk in Godot 4.7 to confirm. |
@@ -460,6 +462,34 @@ the orders. Patina ships zero geometry and never touches collision. The Zoo
 consumer recipe is specced in `docs/DRESSING_CONTRACT.md` and remains to be
 built on the Zoo side (plus the in-engine walk to confirm covers render right
 over DC's collision).
+
+## Depth & cohesion (v0.12): colour-theory shading
+
+Patina's nuance AO/grime darkened *value* only — a flat multiply that reads
+dull, exactly the mistake painters warn against. v0.12 layers colour-theory
+depth cues over the vertex-colour pass, distilled from Arne Jansson's PSG
+tutorial and the depth/colour-theory sources:
+
+- **Saturated shadow gradients** — the shadow/cavity transition *gains
+  saturation* and a warm/cool bias, so form reads as colour, not just darkness.
+- **Atmospheric recession** — surfaces that recede (by height and distance from
+  the building centre) drift toward a cool desaturated grey, separating
+  foreground and background planes.
+- **Texture temperature** — a pattern's per-cell `temp` nudges warm/cool, not
+  only brightness, so tiled surfaces read richer (Jansson's warm/dark
+  alternation).
+
+```bash
+patina shell.glb --theme delco_1997_gas_station --depth delco
+patina shell.glb --depth exterior      # stronger plane separation for exteriors
+```
+
+A PS1-era look has no real-time GI, so these cues are baked into vertex colour
+and tiles on purpose — a deliberate departure from a strict unlit PBR *albedo*.
+Depth is opt-in and deterministic; with no `--depth` (and no theme `depth`)
+output is byte-identical to v0.11. On the geometry side, Zoo (0.22.0) bakes a
+matching cool-up / warm-down directional ambient into module vertex colour, so
+modules have form before Patina runs.
 
 ## Relationship to Deli Counter
 

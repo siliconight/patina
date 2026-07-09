@@ -71,6 +71,7 @@ class Theme:
     pattern: dict[str, dict] = field(default_factory=dict)  # material key -> pattern spec (v0.3)
     family: str | None = None            # declared default texture family (v0.5, builtin name)
     bands: dict[str, list] = field(default_factory=dict)    # role -> vertical band list (v0.7)
+    depth: str | None = None             # depth preset name (v0.12) or None
     decals: tuple[DecalSpec, ...] = ()
     source: str = "builtin"
 
@@ -208,6 +209,12 @@ def _parse(raw: dict, source: str) -> Theme:
     if raw.get("bands"):
         from . import banding
         banding.validate_spec(raw["bands"], f"theme {name}: bands")
+    if raw.get("depth"):
+        from . import depth as _depth
+        if raw["depth"] != "off" and raw["depth"] not in _depth.preset_names():
+            raise ValueError(
+                f"theme {name}: unknown depth preset {raw['depth']!r} "
+                f"(want one of {_depth.preset_names()} or 'off')")
     for h in (raw.get("palette") or {}).values():
         _hex_rgb(h)
 
@@ -244,6 +251,7 @@ def _parse(raw: dict, source: str) -> Theme:
         pattern={k: dict(v) for k, v in (raw.get("pattern") or {}).items()},
         family=raw.get("family"),
         bands={k: list(v) for k, v in (raw.get("bands") or {}).items()},
+        depth=raw.get("depth"),
         decals=tuple(specs),
         source=source,
     )
