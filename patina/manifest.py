@@ -55,7 +55,11 @@ def build(scene: Scene, *, mode: str, seed: int,
           shader: dict | None = None,
           theme=None,
           decal_placements: list | None = None,
-          decal_textures: dict[str, str] | None = None) -> dict:
+          decal_textures: dict[str, str] | None = None,
+          overrides: dict[str, str] | None = None,
+          family=None,
+          anchor_counts: dict[str, int] | None = None,
+          slot_manifest=None) -> dict:
     textures = textures or {}
     used = {r for r in (SurfaceRole(k) for k in role_counts(scene))}
     kitbash = []
@@ -103,6 +107,18 @@ def build(scene: Scene, *, mode: str, seed: int,
         },
         "kitbash": kitbash,
         "stats": scene.stats(),
+        **({"overrides": dict(overrides)} if overrides else {}),
+        **({"family": {"name": family.name, "colors": list(family.colors)}}
+           if family is not None else {}),
+        **({"anchors": {"sidecar": "<out>.anchors.json",
+                        "counts": dict(sorted(anchor_counts.items()))}}
+           if anchor_counts else {}),
+        **({"slots": {"aligned": True,
+                      "manifest_version": slot_manifest.version,
+                      "building_id": slot_manifest.building_id,
+                      "theme": slot_manifest.theme,
+                      "slot_count": len(slot_manifest.slots)}}
+           if slot_manifest is not None else {}),
     }
 
 

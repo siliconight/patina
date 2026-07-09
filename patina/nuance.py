@@ -344,20 +344,31 @@ def _edge_cavity_ao(prim: Primitive, strength: float) -> np.ndarray:
     return 1.0 - strength * spread
 
 
-def _height_grime(prim: Primitive, strength: float, height: float) -> np.ndarray:
-    z = prim.positions[:, 2]
+def _height_grime(prim: Primitive, strength: float, height: float,
+                  up_axis: int = 2) -> np.ndarray:
+    z = prim.positions[:, up_axis]
     zmin = float(z.min())
     t = np.clip((zmin + height - z) / max(height, 1e-6), 0.0, 1.0)
     return 1.0 - strength * t
 
 
 def vertex_color(scene: Scene, opts: NuanceOptions,
-                 tints: dict[SurfaceRole, np.ndarray] | None = None) -> None:
+                 tints: dict[SurfaceRole, np.ndarray] | None = None,
+                 bands: dict | None = None,
+                 z_range: tuple[float, float] | None = None,
+                 up_axis: int = 2) -> None:
     """Bake role tint * edge-cavity AO * height grime into vertex colour.
 
     ``tints`` optionally overrides the built-in per-role base tints (theme
     palettes); roles absent from the override fall back to the defaults.
+
+    ``bands`` (v0.7) optionally supplies vertical material-variation bands
+    ``{SurfaceRole: [(to_frac, rgb), ...]}``; banded-role vertices take a band
+    colour chosen by their global height fraction instead of the flat role
+    tint. ``z_range`` is the global visual-AABB (zmin, zmax); required when
+    ``bands`` is given so bands land at consistent world heights.
     """
+    from . import banding
     table = dict(_BASE_TINT)
     if tints:
         table.update({r: np.asarray(t, np.float32) for r, t in tints.items()})
@@ -367,8 +378,12 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
                 raise RuntimeError("vertex_color requires surfaces.classify() first")
             roles = _vertex_roles(prim)
             tint = np.array([table[r] for r in roles], np.float32)   # (V,3)
+            if bands and z_range is not None:
+                tint = banding.vertex_band_tints(prim.positions, roles, bands,
+                                                 z_range, tint, up_axis=up_axis)
             ao = _edge_cavity_ao(prim, opts.ao_strength)[:, None]
-            grime = _height_grime(prim, opts.grime_strength, opts.grime_height)[:, None]
+            grime = _height_grime(prim, opts.grime_strength, opts.grime_height,
+                                  up_axis)[:, None]
             rgb = np.clip(tint * ao * grime, 0.0, 1.0).astype(np.float32)
             alpha = np.ones((prim.vertex_count(), 1), np.float32)
             prim.color = np.hstack([rgb, alpha])

@@ -80,7 +80,77 @@ CLI, Godot side) stays.
   smear on non-uniformly scaled faces.
 * **5.3 Procedural / posterized textures** — small (128–256 px), tileable,
   posterized to ~16 levels, per-surface-role, deterministic from seed + role.
-  Modes: `vertex-color` (none) / `procedural` / `byo`.
+  Modes: `vertex-color` (none) / `procedural` / `byo`. Since v0.3 a theme may
+  request *structured* patterns per material key (tile/checker/block/panel/
+  plank; `patterns.py`) — wrap-exact cell grids with per-cell colour variety,
+  on RNG streams disjoint from the noise path so `default` stays
+  byte-identical.
+* **5.3b Painter tooling (v0.3)** — `--templates` emits per-key calibration
+  sheets (metre grid at the box projection's world scale) for the byo
+  paint-over workflow; `--start-skins` emits Texpaint-style triangle-unique
+  sheets from authored UV0 for model skinning. Both deterministic; both
+  inputs to human craft, not substitutes (`templates.py`).
+* **5.3c Art-bash overrides (v0.4)** — per material key, substitute an
+  image/photo, albedo colours, tint, or pattern, layered over the theme
+  (theme < `--overrides` file < `--override` flags, field-wise). Theme-level
+  substitutions fold into an effective `Theme` before styling; image swaps
+  apply to the built tile set (`overrides.py`, `palette.import_tile`). No
+  overrides -> byte-identical to v0.3. Applied set recorded in the manifest.
+* **5.4 Texture families (v0.5)** — a shared, limited colour library
+  (`families.py`). Binding a family runs a palette-lock pass that quantises
+  every tile (procedural / byo / override image) and vertex tint to the
+  nearest library colour, so a whole level — and every level sharing the
+  family — reads cohesively. Families load by builtin name or `family.json`,
+  or extract deterministically from a reference image (seeded k-means). A
+  theme may declare a default family; CLI flags override. No family ->
+  lock pass skipped, byte-identical to v0.4. Family recorded in the manifest.
+  This is the id TextureBuild / texture-family idea: cohesion from constraint,
+  not per-texture polish.
+* **5.5 Procedural skins (v0.6)** — generate a structured look from hex seeds
+  + a style instead of extracting one (`skins.py`). Builds a 60/30/10
+  (dominant/secondary/accent) palette, each with a shadow/base/light triad,
+  using the same colour theory as the Color Swatch add-on. Seeds pin slots;
+  harmony (mono/analogous/complementary/triad/split) fills the rest; style
+  sets sat/val + contrast discipline. A skin folds into the theme as per-role
+  albedo/tint (60/30/10 area mapping) and yields a family for the lock pass;
+  applied before overrides so manual bashes win. Interops with color_swatch
+  (seed from liked colours, import a saved palette, export labelled text). No
+  skin -> byte-identical to v0.5.
+* **5.6 Vertical banding (v0.7)** — material variation by world height
+  (`banding.py`): per-vertical-role band specs of {to-fraction, tint} over the
+  shell's global Z, applied in the vertex-colour pass (band tint multiplies the
+  tiled albedo in procedural mode). No geometry — collision untouched. Themes
+  declare bands; skins auto-derive them from the 60/30/10; colours lock to the
+  family. No bands -> byte-identical to v0.6. Per-band *pattern* (height-
+  normalised UVs / material split) is deferred with the geometry/engine class.
+* **5.7 Placement anchors (v0.8)** — `anchors.py`, `--anchors`. Patina emits a
+  `<out>.anchors.json` sidecar of seeded world-space placement points
+  (roofline / wall_base / exterior_light / ground_edge) derived from
+  exterior-wall geometry, for downstream geometry tools to fill (Lux lights via
+  the `.lights.json`/Lot/Lux convention; Zoo / dressing kit props). Baked
+  world-metre coordinates (decal contract), deterministic, budget-clamped.
+  Visual-only metadata: the styled `.glb` is byte-identical with or without
+  `--anchors`, collision untouched. This is the division of labour — Patina
+  places, geometry tools supply the mesh — that keeps the non-promise intact
+  while covering the geometry-bearing art-pass items.
+* **6. Modular alignment (v0.9)** — `slots.py`. Patina predated the DC/Zoo
+  modular setup; this aligns it. (a) **Up-axis detection** after bake: a real
+  DC `.glb` is Y-up (glTF export conversion), legacy shells are Z-up; the
+  min-range axis of a wide/shallow building is "up", threaded through classify,
+  banding, grime and anchors (all previously hard-coded Z). (b) **Reads
+  `slots.json`** as a sibling — the modular manifest keyed by `slot_id`, for
+  per-part targeting. (c) **Coordinate contract** — `blender_to_patina` /
+  `patina_to_blender` implement the exact glTF axis conversion so emitted
+  anchors round-trip with DC markers/slots. (d) **Zoo seam** —
+  `reconcile_family` maps a module theme to the Patina family sharing its
+  palette (`delco` -> `delco_faded`); Zoo owns geometry + base style, Patina
+  owns the nuance pass. Additive/auto-detected; Z-up + no-slots byte-identical.
+* **6.1 Per-slot variation (v0.10)** — `--slot-variation`. Faces are assigned to
+  the nearest role-matching slot centre; a deterministic per-slot factor
+  (seed + slot_id) modulates their vertex colour (monolith) and is emitted as
+  `<out>.instances.json` per-slot color/custom_data in DC's placements shape
+  (instanced bake). Family-locked so repetition-breaking keeps cohesion. Opt-in;
+  needs a slots.json.
 * **5.4 PS1 shader (Godot)** — vertex jitter, approximate affine, colour-depth +
   dither, vertex-lit + white ambient, distance fog. In-house shader.
 

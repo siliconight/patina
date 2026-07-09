@@ -20,8 +20,23 @@ import os
 import shutil
 import sys
 
-from . import decals, gltf_io, manifest, nuance, palette, surfaces, themes, uvproject, version
+from . import (anchors, banding, decals, families, gltf_io, manifest, nuance,
+               overrides, palette, skins, slots, surfaces, templates, themes,
+               uvproject, version)
 from .mesh import Scene, SurfaceRole
+
+
+def _visual_z_range(scene: Scene, up_axis: int = 2) -> tuple[float, float]:
+    """Global (min, max) along the up axis over all visual vertices — banding's
+    height basis. up_axis is 2 (Z) for legacy shells, 1 (Y) for DC glTF."""
+    import numpy as np
+    lo, hi = np.inf, -np.inf
+    for mesh in scene.visual_meshes():
+        for prim in mesh.primitives:
+            if prim.vertex_count():
+                z = prim.positions[:, up_axis]
+                lo, hi = min(lo, float(z.min())), max(hi, float(z.max()))
+    return (0.0, 1.0) if lo == np.inf else (lo, hi)
 
 
 def _default_out(in_path: str) -> str:
@@ -45,6 +60,28 @@ def run(args: argparse.Namespace) -> dict:
     # world-space metres (dodges the I-5 texel-smear / densify-by-local trap).
     scene.bake_visual_transforms()
 
+    # v0.9 coordinate alignment: a real DC .glb bakes Y-up (glTF axis
+    # conversion), while legacy hand-authored shells were Z-up. Detect it once
+    # so height-dependent passes (banding, grime, anchors) read the right axis.
+    up_axis = slots.detect_up_axis(scene)
+    if up_axis != 2:
+        result["up_axis"] = "XYZ"[up_axis]
+
+    # Start skins (v0.3, model skinning): Texpaint-style triangle-unique
+    # sheets from *authored* UV0, captured before densify so the sheet shows
+    # the unwrap as authored, not the subdivided copy.
+    tpl_dir = out_glb[:-4] + ".templates"
+    if args.start_skins:
+        written, skipped = templates.write_start_skins(
+            scene, tpl_dir, size=args.skin_size)
+        result["start_skins"] = len(written)
+        if written:
+            result["templates_dir"] = tpl_dir
+        for name in skipped:
+            print(f"[patina] start skin skipped for {name!r}: no authored UV0 "
+                  "(box-projection UVs are not a paintable unwrap)",
+                  file=sys.stderr)
+
     opts = nuance.NuanceOptions(
         densify=not args.no_densify,
         bevel=not args.no_bevel,
@@ -62,11 +99,107 @@ def run(args: argparse.Namespace) -> dict:
     theme = themes.load(args.theme)
     result["theme"] = theme.name
 
-    surfaces.classify(scene)
+    # Modular alignment (v0.9): if DC emitted a sibling <name>.slots.json, read
+    # it. It carries the building theme (greybox/delco/...) and per-slot records
+    # keyed by slot_id — the modular pipeline Patina now targets per-part.
+    slot_manifest = None if args.no_slots else slots.load(scene)
+    if slot_manifest is not None:
+        result["slots"] = {
+            "version": slot_manifest.version,
+            "building_id": slot_manifest.building_id,
+            "theme": slot_manifest.theme,
+            "count": len(slot_manifest.slots),
+        }
+
+    # Procedural skin (v0.6): generate a 60/30/10 shadow/base/light look from
+    # hex seeds + a style (Color Swatch parity) and fold it into the theme.
+    # Its family feeds the v0.5 lock. Applied before overrides so a manual
+    # --override still wins over the generated look.
+    skin = None
+    if args.skin or args.skin_from:
+        skin = skins.resolve(args.skin or "clean", seed_from=args.skin_from,
+                             seed=args.seed)
+        theme = skins.apply_to_theme(theme, skin)
+        result["skin"] = skin.name
+        result["skin_style"] = f"{skin.style}/{skin.harmony}"
+
+    # Art-bash overrides (v0.4): theme < --overrides file < --override flags.
+    ovr = overrides.merge(
+        overrides.load_file(args.overrides) if args.overrides else {},
+        overrides.parse_cli(args.override))
+    if ovr:
+        theme = overrides.apply_to_theme(theme, ovr)
+        result["overrides"] = overrides.describe(ovr)
+
+    # Texture family (v0.5): the shared, limited material library everything
+    # locks to. Resolution, later wins: theme's declared family < --family <
+    # --extract-family. None -> no lock pass, byte-identical to v0.4.
+    family = None
+    if args.extract_family:
+        img, _, kstr = args.extract_family.partition(":")
+        family = families.extract(img, int(kstr) if kstr else 8, seed=args.seed)
+    elif args.family:
+        family = families.load(args.family)
+    elif skin is not None:
+        family = skin.family()          # a generated skin brings its own library
+    elif theme.family:
+        family = families.load(theme.family)
+    elif slot_manifest is not None:
+        # v0.9 seam: honour the module theme DC/Zoo baked. A delco kit resolves
+        # to Patina's delco_faded family so both describe one world; greybox
+        # stays unstyled. Explicit --family/--skin still win (handled above).
+        fam_name = slots.reconcile_family(slot_manifest.theme)
+        if fam_name is not None:
+            family = families.load(fam_name)
+            result["family_from_slots"] = slot_manifest.theme
+    if family is not None:
+        result["family"] = family.name
+        result["family_colors"] = list(family.colors)
+
+    surfaces.classify(scene, up_axis)
+
+    # Vertical bands (v0.7): material variation by world height. Skin-derived
+    # bands win over a theme's declared bands; --no-bands disables. Colours
+    # lock to the family like every other tint.
+    band_raw = None
+    if not args.no_bands:
+        band_raw = skin.bands() if skin is not None else (theme.bands or None)
+    bands = banding.parse(band_raw)
+    if bands and family is not None:
+        bands = banding.lock(bands, family)
+    z_range = _visual_z_range(scene, up_axis)
+    if bands:
+        result["bands"] = sorted(r.value for r in bands)
+
     if opts.vertex_color:
         tints = {SurfaceRole(r): rgb for r in (sr.value for sr in SurfaceRole)
                  if (rgb := theme.tint_rgb(r)) is not None}
-        nuance.vertex_color(scene, opts, tints=tints or None)
+        if family is not None and tints:
+            tints = {r: families.lock_tint(rgb, family) for r, rgb in tints.items()}
+        nuance.vertex_color(scene, opts, tints=tints or None,
+                            bands=bands or None, z_range=z_range,
+                            up_axis=up_axis)
+
+    # Per-slot variation (v0.10): break modular repetition. With a slots.json
+    # and --slot-variation, bake a deterministic per-slot brightness factor
+    # (keyed by slot_id) into the monolith's vertex colour, and emit the same
+    # variation as per-slot instance color/custom_data for the DC instanced
+    # bake. Needs vertex colour populated, so it runs after vertex_color.
+    if slot_manifest is not None and args.slot_variation and opts.vertex_color:
+        import json as _json
+        varied = slots.apply_slot_variation(scene, slot_manifest, args.seed,
+                                            strength=args.slot_variation_strength)
+        side = slots.instances_sidecar(
+            slot_manifest, family, args.seed,
+            strength=args.slot_variation_strength,
+            source=os.path.basename(out_glb))
+        ipath = out_glb[:-4] + ".instances.json"
+        with open(ipath, "w", encoding="utf-8") as fh:
+            _json.dump(side, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        result["slot_variation"] = {"faces_varied": varied,
+                                    "instances": side["count"],
+                                    "sidecar": ipath}
 
     used_roles = {SurfaceRole(k) for k in surfaces.role_counts(scene)}
     textures_rel: dict[str, str] = {}
@@ -77,6 +210,14 @@ def run(args: argparse.Namespace) -> dict:
             mode=args.mode, size=args.size, posterize=args.posterize,
             byo_dir=args.textures, seed=args.seed)
         tiles = palette.build_palette(used_roles, pal_opts, theme)
+        if ovr:
+            imaged = overrides.apply_images(tiles, ovr, pal_opts)
+            if imaged:
+                result.setdefault("overrides_imaged", imaged)
+        # Palette-lock: snap every tile (procedural / byo / override image) to
+        # the shared family library. This is where cohesion is enforced.
+        if family is not None and tiles:
+            families.lock_tiles(tiles, family)
         if tiles:
             os.makedirs(tex_dir, exist_ok=True)
             for key, data in tiles.items():
@@ -90,6 +231,41 @@ def run(args: argparse.Namespace) -> dict:
                     textures_rel[r.value] = os.path.join(
                         os.path.basename(tex_dir), f"{key}.png")
             result["textures_dir"] = tex_dir
+
+    # Emit the resolved family as a reusable artifact: the swatch catalog
+    # (eyeball the library) and family.json (point every other shell at the
+    # same file — that's how a whole game shares one limited palette).
+    if family is not None:
+        fbase = out_glb[:-4]
+        with open(fbase + ".family.swatches.png", "wb") as fh:
+            fh.write(families.swatch_sheet(family))
+        families.save(family, fbase + ".family.json")
+        result["family_swatches"] = fbase + ".family.swatches.png"
+        result["family_json"] = fbase + ".family.json"
+
+    # The generated skin's 60/30/10 record (reusable / re-importable, and a
+    # Color-Swatch-style text export for pasting back into the tool).
+    if skin is not None:
+        sbase = out_glb[:-4]
+        import json as _json
+        with open(sbase + ".skin.json", "w", encoding="utf-8") as fh:
+            _json.dump(skins.to_skin_json(skin), fh, indent=2)
+            fh.write("\n")
+        with open(sbase + ".skin.txt", "w", encoding="utf-8") as fh:
+            fh.write(skins.to_swatch_text(skin))
+        result["skin_json"] = sbase + ".skin.json"
+
+    # Paint templates (v0.3, map skinning): per-material-key calibration
+    # sheets for the byo painting workflow. In procedural mode the generated
+    # tile is the template background (paint over the stand-in).
+    if args.templates:
+        keys = sorted({theme.material_key(r.value) for r in used_roles})
+        backgrounds = tiles if args.mode == "procedural" else None
+        written = templates.write_paint_templates(
+            keys, tpl_dir, size=args.size, texel=args.texel,
+            backgrounds=backgrounds)
+        result["templates"] = len(written)
+        result["templates_dir"] = tpl_dir
 
     # Decal pass (bashing brief step 3): seeded placements + posterized RGBA
     # stamps, emitted through the manifest. Visual-only; the Godot addon
@@ -114,10 +290,47 @@ def run(args: argparse.Namespace) -> dict:
 
     gltf_io.save_glb(scene, out_glb)
 
+    # Placement anchors (v0.8): visual-only handoff for downstream geometry
+    # tools. Patina decides WHERE dressing/lights/props go; Lux/Zoo/a dressing
+    # kit supply WHAT. Off by default (it's a handoff artifact, not styling).
+    anchor_list: list = []
+    anchor_counts: dict = {}
+    if args.anchors:
+        import json
+        aopts = anchors.AnchorOptions(
+            kinds=tuple(args.anchor_kinds) if args.anchor_kinds
+            else anchors.ANCHOR_KINDS)
+        anchor_list = anchors.generate(scene, aopts, args.seed, up_axis)
+        anchor_counts = anchors.kind_counts(anchor_list)
+        # v0.9 alignment: when a DC building is in play (slots.json present, or
+        # forced), emit anchors in DC's shared Blender Z-up space so Lux/Zoo
+        # consume them with the same transform code as DC's own manifests.
+        emit_list = anchor_list
+        space = "baked_world_metres"
+        building_id = None
+        if slot_manifest is not None and not args.anchor_patina_space:
+            emit_list = anchors.in_blender_space(anchor_list)
+            space = "spec/Blender Z-up raw coords"
+            building_id = slot_manifest.building_id
+        sidecar = anchors.to_sidecar(emit_list, seed=args.seed,
+                                     source=os.path.basename(out_glb),
+                                     space=space, building_id=building_id)
+        apath = out_glb[:-4] + ".anchors.json"
+        with open(apath, "w", encoding="utf-8") as fh:
+            json.dump(sidecar, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+        result["anchors"] = apath
+        result["anchor_counts"] = anchor_counts
+        result["anchor_space"] = space
+
     man = manifest.build(scene, mode=args.mode, seed=args.seed,
                          textures=textures_rel, theme=theme,
                          decal_placements=placements,
-                         decal_textures=decal_tex_rel)
+                         decal_textures=decal_tex_rel,
+                         overrides=result.get("overrides"),
+                         family=family,
+                         anchor_counts=anchor_counts or None,
+                         slot_manifest=slot_manifest)
     manifest.validate(man)
     man_path = out_glb[:-4] + ".json"     # <name>.patina.json
     manifest.write(man, man_path)
@@ -154,6 +367,62 @@ def build_parser() -> argparse.ArgumentParser:
                    help="theme preset: builtin name "
                         f"({', '.join(themes.builtin_names())}) or a theme "
                         ".json path. default reproduces v0.1.x output.")
+    p.add_argument("--skin", metavar="STYLE[:SEEDS]", default=None,
+                   help="procedurally generate a skin: STYLE "
+                        f"({', '.join(skins.style_names())}) optionally with "
+                        "SEEDS = 1-3 #hex colours (dominant[,secondary,accent]) "
+                        "or a color_swatch library/palette .json. Builds a "
+                        "60/30/10 shadow/base/light look and locks to it. "
+                        "e.g. --skin grimy:#4a5a3f  or  --skin neon:#ff0055,#00ffcc")
+    p.add_argument("--skin-from", metavar="FILE", default=None,
+                   help="seed a skin from a color_swatch library (liked "
+                        "colours) or a saved 60/30/10 palette json; combine "
+                        "with --skin STYLE to set the mood")
+    p.add_argument("--family", metavar="NAME|PATH", default=None,
+                   help="texture family: the shared, limited colour library "
+                        "every surface locks to for cohesion. Builtin name "
+                        f"({', '.join(families.builtin_names())}) or a "
+                        "family.json path. Reuse the same family across every "
+                        "shell to make the whole game read as one place.")
+    p.add_argument("--extract-family", metavar="IMAGE[:K]", default=None,
+                   help="derive a K-colour family from a reference image "
+                        "(default K=8) via deterministic k-means, lock to it, "
+                        "and save it as <out>.family.json. Overrides --family.")
+    p.add_argument("--override", action="append", metavar="KEY=VALUE", default=[],
+                   help="art-bash one material key: KEY=#hex[,#hex...] recolours "
+                        "(albedo), KEY=path/to/image.(png|jpg|webp) skins it. "
+                        "Repeatable; wins over --overrides. e.g. "
+                        "--override floor=./ref/lino.jpg --override wall=#5a5348")
+    p.add_argument("--overrides", metavar="FILE", default=None,
+                   help="saved bash session: JSON of {key: {image|albedo|tint|"
+                        "pattern|process}}; relative image paths resolve next "
+                        "to the file")
+    p.add_argument("--slot-variation", action="store_true",
+                   help="with a DC slots.json: bake deterministic per-slot "
+                        "colour variation (keyed by slot_id) into vertex colour "
+                        "and emit <out>.instances.json (per-instance color/"
+                        "custom_data) — breaks modular repetition")
+    p.add_argument("--slot-variation-strength", type=float, default=0.12,
+                   help="per-slot brightness jitter amount (0-0.5, default 0.12)")
+    p.add_argument("--no-slots", action="store_true",
+                   help="ignore a sibling DC slots.json even when present "
+                        "(fall back to whole-mesh, geometry-derived styling)")
+    p.add_argument("--anchors", action="store_true",
+                   help="emit a <out>.anchors.json sidecar of visual-only "
+                        "placement hints (roofline / wall_base / "
+                        "exterior_light / ground_edge) for downstream geometry "
+                        "tools (Lux/Zoo/dressing kit). Patina places; they "
+                        "supply the mesh. Collision/gameplay untouched.")
+    p.add_argument("--anchor-patina-space", action="store_true",
+                   help="emit anchors in Patina's baked Y-up space instead of "
+                        "DC's Blender Z-up (only relevant with a slots.json)")
+    p.add_argument("--anchor-kinds", nargs="+", metavar="KIND",
+                   choices=list(anchors.ANCHOR_KINDS), default=None,
+                   help="limit anchor kinds (default: all — "
+                        f"{', '.join(anchors.ANCHOR_KINDS)})")
+    p.add_argument("--no-bands", action="store_true",
+                   help="disable vertical material-variation bands even when "
+                        "the theme/skin declares them")
     p.add_argument("--no-decals", action="store_true",
                    help="skip the theme's decal pass")
     p.add_argument("--decal-scale", type=float, default=1.0,
@@ -173,6 +442,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="densify target edge length in metres")
     p.add_argument("--max-subdiv", type=int, default=4,
                    help="max densify levels (budget clamp)")
+    p.add_argument("--templates", action="store_true",
+                   help="write per-material paint templates (metre grid + "
+                        "key label) to <out>.templates/ — the byo painting "
+                        "workflow")
+    p.add_argument("--start-skins", action="store_true",
+                   help="write Texpaint-style triangle-unique start skins "
+                        "from authored UV0 to <out>.templates/ (model "
+                        "skinning; meshes without UV0 are skipped)")
+    p.add_argument("--skin-size", type=int, default=256,
+                   help="start-skin sheet size in px")
     p.add_argument("--out", default=None, help="output .glb path "
                    "(default <input>.patina.glb)")
     p.add_argument("--passthrough", action="store_true",
@@ -192,6 +471,36 @@ def main(argv: list[str] | None = None) -> int:
           f"-> {res['output_glb']}")
     if res.get("decals"):
         print(f"[patina] decals: {res['decals']} placed")
+    if res.get("slot_variation"):
+        sv = res["slot_variation"]
+        print(f"[patina] slot variation: {sv['faces_varied']} faces, "
+              f"{sv['instances']} instances -> {sv['sidecar']}")
+    if res.get("slots"):
+        s = res["slots"]
+        print(f"[patina] aligned to DC slots.json v{s['version']}: "
+              f"{s['building_id']} / theme={s['theme']} ({s['count']} slots)")
+    if res.get("family_from_slots"):
+        print(f"[patina] family from slot theme '{res['family_from_slots']}'")
+    if res.get("anchor_counts"):
+        summary = ", ".join(f"{k}:{n}" for k, n in
+                            sorted(res["anchor_counts"].items()))
+        print(f"[patina] anchors -> {res['anchors']} ({summary})")
+    if res.get("bands"):
+        print(f"[patina] vertical bands: {', '.join(res['bands'])}")
+    if res.get("skin"):
+        print(f"[patina] skin: {res['skin']} ({res['skin_style']}) — "
+              "60/30/10 generated, locked")
+    if res.get("family"):
+        print(f"[patina] family: {res['family']} "
+              f"({len(res.get('family_colors', []))} colours) — all surfaces locked")
+    if res.get("overrides"):
+        for key, desc in res["overrides"].items():
+            print(f"[patina] override {key}: {desc}")
+    if res.get("templates"):
+        print(f"[patina] paint templates: {res['templates']} "
+              f"-> {res['templates_dir']}")
+    if "start_skins" in res:
+        print(f"[patina] start skins: {res['start_skins']} written")
     if "manifest" in res:
         print(f"[patina] manifest -> {res['manifest']}")
     s = res.get("stats", {})

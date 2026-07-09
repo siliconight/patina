@@ -27,6 +27,7 @@ import json
 import os
 from dataclasses import dataclass, field
 
+from . import patterns
 from .mesh import SurfaceRole
 
 # Roles a theme may address. Kept in one place so validation errors are exact.
@@ -67,6 +68,9 @@ class Theme:
     tint: dict[str, str] = field(default_factory=dict)      # role -> vertex-tint hex
     albedo: dict[str, list[str]] = field(default_factory=dict)  # role -> tile hex variants
     alias: dict[str, str] = field(default_factory=dict)     # role -> material key
+    pattern: dict[str, dict] = field(default_factory=dict)  # material key -> pattern spec (v0.3)
+    family: str | None = None            # declared default texture family (v0.5, builtin name)
+    bands: dict[str, list] = field(default_factory=dict)    # role -> vertical band list (v0.7)
     decals: tuple[DecalSpec, ...] = ()
     source: str = "builtin"
 
@@ -80,6 +84,10 @@ class Theme:
 
     def albedo_variants(self, key: str) -> list[tuple[float, float, float]]:
         return [_hex_rgb(h) for h in self.albedo.get(key, [])]
+
+    def pattern_spec(self, key: str) -> dict | None:
+        """Structured-tile pattern for a material key, or None (-> noise)."""
+        return self.pattern.get(key)
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +128,31 @@ _DELCO_GAS = {
         "roof": ["#4a4642", "#3f3c39"],                     # tar roof
         "trim": ["#9b2f24", "#2e6f7e"],                     # oxblood / teal
         "unknown": ["#999990"],
+    },
+    # v0.7: vertical material variation — oxblood brick base course, painted
+    # concrete body, brass flashing at the cap. Reads as a building, not a box.
+    "bands": {
+        "wall": [
+            {"to": 0.28, "tint": "#6e2a24"},
+            {"to": 0.92, "tint": "#726d61"},
+            {"to": 1.00, "tint": "#a98a52"},
+        ],
+        "exterior_wall": [
+            {"to": 0.30, "tint": "#55524a"},
+            {"to": 0.90, "tint": "#8f8877"},
+            {"to": 1.00, "tint": "#a98a52"},
+        ],
+    },
+    # v0.3: the structured "texture set" — worn lino grid inside, drop-ceiling
+    # grid above, painted cinderblock courses outside, panelled interior
+    # walls, wood-plank trim. Roof stays noise (tar). Per-cell variety draws
+    # from the albedo lists above, Q2-base-set style.
+    "pattern": {
+        "floor": {"type": "tile", "cells": 4, "groove": "#3a352c", "jitter": 0.1},
+        "ceiling": {"type": "tile", "cells": 2, "line_px": 1, "groove": "#6e6e68"},
+        "exterior_wall": {"type": "block", "rows": 6, "cols": 3, "groove": "#8a7a58"},
+        "wall": {"type": "panel", "cols": 4, "line_px": 1},
+        "trim": {"type": "plank", "rows": 4},
     },
     "decals": [
         {"type": "water_stain", "roles": ["wall", "ceiling"],
@@ -168,6 +201,13 @@ def _parse(raw: dict, source: str) -> Theme:
     for src, dst in (raw.get("alias") or {}).items():
         if src not in _VALID_ROLES or dst not in _VALID_ROLES:
             raise ValueError(f"theme {name}: bad alias {src!r} -> {dst!r}")
+    for key, spec in (raw.get("pattern") or {}).items():
+        if key not in _VALID_ROLES:
+            raise ValueError(f"theme {name}: unknown material key {key!r} in pattern")
+        patterns.validate_spec(spec, f"theme {name}: pattern[{key!r}]")
+    if raw.get("bands"):
+        from . import banding
+        banding.validate_spec(raw["bands"], f"theme {name}: bands")
     for h in (raw.get("palette") or {}).values():
         _hex_rgb(h)
 
@@ -201,6 +241,9 @@ def _parse(raw: dict, source: str) -> Theme:
         tint=dict(raw.get("tint") or {}),
         albedo={k: list(v) for k, v in (raw.get("albedo") or {}).items()},
         alias=dict(raw.get("alias") or {}),
+        pattern={k: dict(v) for k, v in (raw.get("pattern") or {}).items()},
+        family=raw.get("family"),
+        bands={k: list(v) for k, v in (raw.get("bands") or {}).items()},
         decals=tuple(specs),
         source=source,
     )

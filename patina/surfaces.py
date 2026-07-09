@@ -78,8 +78,14 @@ def _visual_aabb(scene: Scene):
     return (lo, hi) if any_pts else (np.zeros(3), np.zeros(3))
 
 
-def classify(scene: Scene) -> None:
-    """Fill ``prim.face_roles`` for every visual primitive in place."""
+def classify(scene: Scene, up_axis: int = 2) -> None:
+    """Fill ``prim.face_roles`` for every visual primitive in place.
+
+    ``up_axis`` (0=X, 1=Y, 2=Z) is the vertical axis: 2 for legacy Z-up shells,
+    1 for DC's Y-up glTF exports. Floor/ceiling/roof read the up axis; the other
+    two axes form the horizontal plane the exterior-wall test runs in.
+    """
+    horiz_axes = [a for a in range(3) if a != up_axis]
     hints = _hinted_roles(scene)
     lo, hi = _visual_aabb(scene)
     for mesh in scene.visual_meshes():
@@ -88,8 +94,8 @@ def classify(scene: Scene) -> None:
             forced = SurfaceRole.TRIM
         for prim, fn in _face_normals(mesh):
             roles = np.empty(fn.shape[0], dtype=object)
-            up = fn[:, 2] >= _UP_THRESHOLD
-            down = fn[:, 2] <= -_UP_THRESHOLD
+            up = fn[:, up_axis] >= _UP_THRESHOLD
+            down = fn[:, up_axis] <= -_UP_THRESHOLD
             vertical = ~(up | down)
             roles[:] = SurfaceRole.WALL
             roles[up] = SurfaceRole.FLOOR
@@ -98,15 +104,16 @@ def classify(scene: Scene) -> None:
             centroids = prim.positions[prim.indices].mean(axis=1)   # (T,3)
 
             # roof: up-facing at the top of the visual AABB.
-            roof = up & (centroids[:, 2] >= hi[2] - _BOUNDARY_TOL)
+            roof = up & (centroids[:, up_axis] >= hi[up_axis] - _BOUNDARY_TOL)
             roles[roof] = SurfaceRole.ROOF
 
             # exterior wall: vertical face on the AABB boundary along the
             # normal's dominant horizontal axis, normal pointing outward.
             if vertical.any():
-                horiz = np.abs(fn[:, :2])                            # (T,2)
-                axis = np.argmax(horiz, axis=1)                      # 0=x 1=y
+                horiz = np.abs(fn[:, horiz_axes])                   # (T,2)
+                which = np.argmax(horiz, axis=1)                    # 0/1 into horiz_axes
                 idx = np.arange(fn.shape[0])
+                axis = np.array(horiz_axes)[which]                 # real axis index
                 sgn = np.sign(fn[idx, axis])
                 on_hi = (sgn > 0) & (centroids[idx, axis] >= hi[axis] - _BOUNDARY_TOL)
                 on_lo = (sgn < 0) & (centroids[idx, axis] <= lo[axis] + _BOUNDARY_TOL)

@@ -148,7 +148,18 @@ def load_glb(path: str) -> Scene:
 
     # Pick up the sibling gameplay.json if present (markers / surface hints).
     scene.gameplay = _load_gameplay(path)
+    # Pick up the sibling slots.json (DC's modular art-pass manifest, v1.x).
+    scene.slots = _load_slots(path)
     return scene
+
+
+def _load_slots(glb_path: str) -> Optional[dict]:
+    base = glb_path[:-4] if glb_path.lower().endswith(".glb") else glb_path
+    for cand in (base + ".slots.json", glb_path + ".slots.json"):
+        if os.path.exists(cand):
+            with open(cand, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+    return None
 
 
 def _load_gameplay(glb_path: str) -> Optional[dict]:

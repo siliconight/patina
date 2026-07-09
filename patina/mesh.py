@@ -170,6 +170,7 @@ class Scene:
     # writer can faithfully re-emit a Deli-Counter-shaped file.
     source_path: Optional[str] = None
     gameplay: Optional[dict] = None    # parsed <name>.gameplay.json, if present
+    slots: Optional[dict] = None       # parsed <name>.slots.json (DC modular manifest), if present
 
     def visual_meshes(self) -> list[Mesh]:
         return [m for m in self.meshes if m.is_visual()]

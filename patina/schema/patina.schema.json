@@ -2,41 +2,116 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Patina style manifest",
   "type": "object",
-  "required": ["schema", "generator", "source", "seed", "mode", "theme", "shader", "surfaces", "decals", "kitbash"],
+  "required": [
+    "schema",
+    "generator",
+    "source",
+    "seed",
+    "mode",
+    "theme",
+    "shader",
+    "surfaces",
+    "decals",
+    "kitbash"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema": { "type": "string" },
-    "generator": { "type": "string" },
-    "source": { "type": "string" },
-    "seed": { "type": "integer" },
-    "mode": { "type": "string", "enum": ["vertex-color", "procedural", "byo"] },
+    "schema": {
+      "type": "string"
+    },
+    "generator": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "vertex-color",
+        "procedural",
+        "byo"
+      ]
+    },
     "theme": {
       "type": "object",
-      "required": ["name", "palette"],
+      "required": [
+        "name",
+        "palette"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "palette": { "type": "object", "additionalProperties": { "type": "string" } }
+        "name": {
+          "type": "string"
+        },
+        "palette": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     },
     "decals": {
       "type": "object",
-      "required": ["textures", "instances"],
+      "required": [
+        "textures",
+        "instances"
+      ],
       "additionalProperties": false,
       "properties": {
-        "textures": { "type": "object", "additionalProperties": { "type": "string" } },
+        "textures": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "instances": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["type", "pos", "normal", "size", "rot"],
+            "required": [
+              "type",
+              "pos",
+              "normal",
+              "size",
+              "rot"
+            ],
             "additionalProperties": false,
             "properties": {
-              "type": { "type": "string" },
-              "pos": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
-              "normal": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
-              "size": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
-              "rot": { "type": "number" }
+              "type": {
+                "type": "string"
+              },
+              "pos": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "normal": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3
+              },
+              "size": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "rot": {
+                "type": "number"
+              }
             }
           }
         }
@@ -44,24 +119,70 @@
     },
     "shader": {
       "type": "object",
-      "required": ["name", "vertex_jitter", "affine_strength", "color_depth", "dither", "ambient", "fog"],
+      "required": [
+        "name",
+        "vertex_jitter",
+        "affine_strength",
+        "color_depth",
+        "dither",
+        "ambient",
+        "fog"
+      ],
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string" },
-        "vertex_jitter": { "type": "number" },
-        "affine_strength": { "type": "number", "minimum": 0, "maximum": 1 },
-        "color_depth": { "type": "integer", "minimum": 2 },
-        "dither": { "type": "boolean" },
-        "ambient": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+        "name": {
+          "type": "string"
+        },
+        "vertex_jitter": {
+          "type": "number"
+        },
+        "affine_strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "color_depth": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "dither": {
+          "type": "boolean"
+        },
+        "ambient": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
         "fog": {
           "type": "object",
-          "required": ["enabled", "color", "near", "far"],
+          "required": [
+            "enabled",
+            "color",
+            "near",
+            "far"
+          ],
           "additionalProperties": false,
           "properties": {
-            "enabled": { "type": "boolean" },
-            "color": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
-            "near": { "type": "number" },
-            "far": { "type": "number" }
+            "enabled": {
+              "type": "boolean"
+            },
+            "color": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "near": {
+              "type": "number"
+            },
+            "far": {
+              "type": "number"
+            }
           }
         }
       }
@@ -70,12 +191,24 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["vertex_color", "uv_channel"],
+        "required": [
+          "vertex_color",
+          "uv_channel"
+        ],
         "additionalProperties": false,
         "properties": {
-          "vertex_color": { "type": "boolean" },
-          "uv_channel": { "type": "string" },
-          "texture": { "type": ["string", "null"] }
+          "vertex_color": {
+            "type": "boolean"
+          },
+          "uv_channel": {
+            "type": "string"
+          },
+          "texture": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       }
     },
@@ -83,16 +216,116 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["mesh", "role", "bounds_min", "bounds_max"],
+        "required": [
+          "mesh",
+          "role",
+          "bounds_min",
+          "bounds_max"
+        ],
         "additionalProperties": false,
         "properties": {
-          "mesh": { "type": "string" },
-          "role": { "type": "string" },
-          "bounds_min": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
-          "bounds_max": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+          "mesh": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "bounds_min": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "bounds_max": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
         }
       }
     },
-    "stats": { "type": "object" }
+    "stats": {
+      "type": "object"
+    },
+    "overrides": {
+      "type": "object",
+      "description": "art-bash per-key substitutions applied over the theme (v0.4+)",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "family": {
+      "type": "object",
+      "description": "the shared texture family (limited colour library) all surfaces were locked to (v0.5+)",
+      "required": [
+        "name",
+        "colors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "colors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "anchors": {
+      "type": "object",
+      "description": "summary of visual-only placement anchors emitted to the sidecar (v0.8+)",
+      "required": [
+        "sidecar",
+        "counts"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sidecar": {
+          "type": "string"
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "slots": {
+      "type": "object",
+      "description": "DC modular slots.json alignment summary (v0.9+)",
+      "required": [
+        "aligned",
+        "building_id",
+        "theme",
+        "slot_count"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "aligned": {
+          "type": "boolean"
+        },
+        "manifest_version": {
+          "type": "string"
+        },
+        "building_id": {
+          "type": "string"
+        },
+        "theme": {
+          "type": "string"
+        },
+        "slot_count": {
+          "type": "integer"
+        }
+      }
+    }
   }
 }

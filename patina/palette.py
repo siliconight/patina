@@ -27,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 
+from . import patterns
 from .determinism import rng_for
 from .mesh import SurfaceRole
 from .themes import Theme
@@ -92,7 +93,25 @@ def generate_tile(role: SurfaceRole, opts: PaletteOptions,
     The noise stream is keyed only by ``(seed, "palette", role)`` and theme
     albedo variants draw from a *separate* stream, so a theme with no albedo
     entry for a role produces bytes identical to the pre-theme output.
+
+    v0.3: a theme may request a *structured* pattern for a material key
+    (tile / checker / block / panel / plank — see :mod:`patina.patterns`).
+    Pattern RNG streams are keyed ``(seed, "pattern", key, ...)``, disjoint
+    from the ``"palette"`` streams, so keys without a pattern entry (and the
+    whole default theme) stay byte-identical to v0.2.
     """
+    if theme is not None:
+        spec = theme.pattern_spec(role.value)
+        if spec is not None:
+            base = np.array(_ALBEDO.get(role, _ALBEDO[SurfaceRole.UNKNOWN]),
+                            np.float32)
+            variants = theme.albedo_variants(role.value)
+            rgb = patterns.generate(role.value, spec, size=opts.size,
+                                    seed=opts.seed, base=base,
+                                    variants=variants)
+            rgb = posterize(rgb, opts.posterize)
+            return Image.fromarray((rgb * 255).astype(np.uint8), "RGB")
+
     rng = rng_for(opts.seed, "palette", role.value)
     n = _tileable_noise(opts.size, rng)
     base = np.array(_ALBEDO.get(role, _ALBEDO[SurfaceRole.UNKNOWN]), np.float32)
@@ -114,6 +133,29 @@ def _png_bytes(img: Image.Image) -> bytes:
     # optimize=False keeps output deterministic across Pillow builds.
     img.save(buf, format="PNG", optimize=False)
     return buf.getvalue()
+
+
+def import_tile(path: str, opts: PaletteOptions, *, process: bool = True) -> bytes:
+    """Bring an external image/photo in as a tile (PNG bytes).
+
+    With ``process`` (default): centre-crop to square, resize to the tile
+    size with box filtering, drop to RGB, and posterize to the PS1 colour
+    depth — a phone photo of a real surface becomes a period-correct tile.
+    With ``process=False`` the file is passed through as PNG bytes untouched
+    (already-authored pixel art). Deterministic in the file bytes either way.
+    """
+    with Image.open(path) as im:
+        im.load()
+        if not process:
+            return _png_bytes(im.convert("RGBA") if im.mode == "P" else im)
+        im = im.convert("RGB")
+        w, h = im.size
+        s = min(w, h)
+        im = im.crop(((w - s) // 2, (h - s) // 2, (w - s) // 2 + s, (h - s) // 2 + s))
+        im = im.resize((opts.size, opts.size), Image.BOX)
+    arr = np.asarray(im, np.float32) / 255.0
+    arr = posterize(arr, opts.posterize)
+    return _png_bytes(Image.fromarray((arr * 255).astype(np.uint8), "RGB"))
 
 
 def build_palette(roles: set[SurfaceRole], opts: PaletteOptions,
