@@ -386,6 +386,23 @@ def run(args: argparse.Namespace) -> dict:
             fh.write("\n")
         result["trim_sheet"] = sheet_path
 
+    # Look preview (v0.13): render the composite (vertex colour x stand-in Lux
+    # banded light) so the multiplicative-darkening risk is visible before the
+    # engine walk. Reports luma headroom for Lux's bands.
+    if args.preview:
+        from . import preview as preview_mod
+        try:
+            from PIL import Image
+            popts = preview_mod.PreviewOptions()
+            pimg = preview_mod.render(scene, popts)
+            stats = preview_mod.luma_stats(pimg, popts.bg)
+            ppath = out_glb[:-4] + ".preview.png"
+            Image.fromarray((pimg * 255).astype("uint8"), "RGB").save(ppath)
+            result["preview"] = ppath
+            result["preview_stats"] = stats
+        except Exception as e:                       # preview is best-effort
+            result["preview_error"] = str(e)
+
     man = manifest.build(scene, mode=args.mode, seed=args.seed,
                          textures=textures_rel, theme=theme,
                          decal_placements=placements,
@@ -467,6 +484,11 @@ def build_parser() -> argparse.ArgumentParser:
                         "custom_data) — breaks modular repetition")
     p.add_argument("--slot-variation-strength", type=float, default=0.12,
                    help="per-slot brightness jitter amount (0-0.5, default 0.12)")
+    p.add_argument("--preview", action="store_true",
+                   help="render a composite look preview (<out>.preview.png) "
+                        "approximating vertex colour x Lux banded light, and "
+                        "report luma headroom — surfaces the over-darkening risk "
+                        "before the Godot engine walk")
     p.add_argument("--depth", metavar="PRESET", default=None,
                    help="layer colour-theory depth cues (saturated shadow "
                         "gradients + atmospheric recession): a preset name "
@@ -547,6 +569,12 @@ def main(argv: list[str] | None = None) -> int:
           f"-> {res['output_glb']}")
     if res.get("decals"):
         print(f"[patina] decals: {res['decals']} placed")
+    if res.get("preview"):
+        s = res["preview_stats"]
+        flag = "OK" if s.get("headroom_ok") else "TOO DARK — reduce bake strengths"
+        print(f"[patina] preview -> {res['preview']}")
+        print(f"[patina]   luma mean {s.get('luma_mean')} p10 {s.get('luma_p10')} "
+              f"crushed {s.get('crushed_frac')} -> {flag}")
     if res.get("depth"):
         print(f"[patina] depth cues: {res['depth']} (saturated shadows + atmosphere)")
     if res.get("trim_sheet"):

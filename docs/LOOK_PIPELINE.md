@@ -90,5 +90,7 @@ Use `--depth delco` (not `lux`) only when the build is viewed **without** Lux
   Lux light shouldn't over-darken upward faces or crush cavities.
 - Vertex-colour range: three multiplicative bakes (Zoo wear+ambient, Patina
   nuance+depth, per-slot) must not drive albedo so low that Lux's banding has
-  nothing to work with. If it does, reduce strengths, don't clamp.
+  nothing to work with. If it does, reduce strengths, don't clamp. **Check this
+  offline first with `patina --preview`** — it renders the composite and reports
+  a luma headroom verdict; on delco the full stack sits at ~0.54 mean (fine).
 - `--depth lux` vs `delco` side by side under `delco_summer_afternoon`.

@@ -104,7 +104,8 @@ import the `.glb`, click **Apply PS1 style**.
 | `--start-skins` | Write Texpaint-style triangle-unique start skins from authored UV0 (model skinning; UV0-less meshes are skipped). |
 | `--skin-size` | Start-skin sheet size in px (default 256). |
 | `--slot-variation` | With a DC `slots.json`: bake deterministic per-slot colour variation (keyed by `slot_id`) into vertex colour and emit `<out>.instances.json` — breaks modular repetition. |
-| `--depth` | Layer colour-theory depth cues (saturated shadow gradients + atmospheric recession): a preset name (`delco`, `exterior`) or `off`. |
+| `--depth` | Layer colour-theory depth cues: a preset name (`lux`, `delco`, `exterior`) or `off`. |
+| `--preview` | Render a composite look preview (`<out>.preview.png`) approximating vertex colour × Lux banded light, and report luma headroom. |
 | `--trim-sheet` | Generate a family-locked trim atlas (roof edge, panel seam, pipe run, corner guard, foundation, conduit, flashing) + UV-region map. |
 | `--dressing` | With `--anchors`: emit `<out>.dressing.json` — per-anchor non-collision cover build orders (trim piece + UV region + position) for Zoo. |
 | `--slot-variation-strength` | Per-slot brightness jitter (0–0.5, default 0.12). |
@@ -490,7 +491,9 @@ it owns shadow *colour* and distance *fog*, and the `lux` preset bakes only what
 Lux can't derive — shadow *saturation* (form) and gentle height recession. Use
 `--depth delco`/`exterior` only when the build is viewed **without** Lux. See
 `docs/LOOK_PIPELINE.md` for the full DC → Zoo → Patina → Lux composition and who
-owns which cue.
+owns which cue. Run `--preview` to render an offline composite and get a luma
+headroom verdict before opening Godot — it flags over-darkening (the risk from
+three multiplicative bakes feeding Lux's `× vertex_colour`) as a number.
 
 A PS1-era look has no real-time GI, so these cues are baked into vertex colour
 and tiles on purpose — a deliberate departure from a strict unlit PBR *albedo*.

@@ -3,6 +3,32 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.13.0] — 2026-07-09
+
+The "look preview" release — see the composite before the engine walk.
+
+### Added
+- **`--preview`** (`patina/preview.py`): a small software rasteriser that
+  renders the composite look — `band_light(N·L) × vertex_colour × albedo` with
+  a Lux-like key light, banded diffuse and cool ambient — to `<out>.preview.png`.
+  It stands in for Lux just enough to be honest about the multiply, so the
+  over-darkening risk (three multiplicative bakes then Lux's own `× vertex_colour`)
+  is visible offline.
+- **Headroom report**: prints luma mean / p10 / crushed-fraction and an
+  `OK` / `TOO DARK — reduce bake strengths` verdict. "Too dark" is now a number,
+  not a vibe. Calibrated so bright bakes pass and a compressed-banding dark bake
+  (mean < 0.25 or >12% near-black) flags.
+
+### Finding
+- On a real `gs_corner_station` delco build the full stack (family + `--depth lux`
+  + `--slot-variation`) sits at luma mean ~0.54 with zero crushed pixels — barely
+  darker than minimal. The over-darkening risk is not materialising on delco; the
+  bakes are conservative. The preview makes that checkable per build.
+
+### Notes
+- Pure numpy, no bpy/Godot. Deterministic. Off by default. Does not replace the
+  engine walk — it makes it faster and catches the darkening failure early.
+
 ## [0.12.1] — 2026-07-09
 
 Reconcile the depth pass with Lux (the Godot runtime look framework), after
