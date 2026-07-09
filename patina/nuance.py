@@ -405,6 +405,7 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
                     recede = depth_mod.recession_weight(
                         prim.positions, up_axis, z_range, centroid, depth_opts)
                     tint = depth_mod.apply_atmospheric(tint, recede, depth_opts)
+                    tint = depth_mod.apply_separation(tint, recede, depth_opts)
 
             rgb = np.clip(tint * ao[:, None] * grime[:, None], 0.0, 1.0
                           ).astype(np.float32)

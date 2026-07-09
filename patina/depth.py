@@ -58,9 +58,12 @@ class DepthOptions:
     atmos: float = 0.0            # atmospheric recession strength (0-1)
     atmos_height: float = 0.0     # recession from height (share of atmos)
     atmos_radial: float = 0.0     # recession from centroid distance (share)
+    near_sat: float = 0.0         # extra saturation on the NEAR field (arcade pop)
+    far_wash: float = 0.0         # extra desaturate+lighten of the FAR field (0-1)
 
     def active(self) -> bool:
-        return (self.shadow_sat or self.shadow_warm or self.atmos)
+        return bool(self.shadow_sat or self.shadow_warm or self.atmos
+                    or self.near_sat or self.far_wash)
 
     @classmethod
     def preset(cls, name: str) -> "DepthOptions":
@@ -70,6 +73,7 @@ class DepthOptions:
 # The recession target: a desaturated cool sky-grey (atmospheric perspective
 # pulls receding surfaces toward this). Kept muted so it reads as air, not fog.
 _ATMOS_TARGET = np.array([0.62, 0.66, 0.72], np.float32)   # slightly cool grey
+_WASH_TARGET = np.array([0.80, 0.82, 0.84], np.float32)    # light haze (arcade far)
 _WARM = np.array([1.0, 0.86, 0.66], np.float32)            # shadow warm bias
 _COOL = np.array([0.72, 0.82, 1.0], np.float32)            # shadow cool bias
 
@@ -91,6 +95,14 @@ _PRESETS: dict[str, DepthOptions] = {
     # double shadow-tint, no albedo-faked distance haze fighting real fog.
     "lux": DepthOptions(shadow_sat=0.32, shadow_warm=0.0, atmos=0.12,
                         atmos_height=1.0, atmos_radial=0.0),
+    # arcade pop: punchy saturated near vs washed-out far. Leans HARD into plane
+    # separation — the near field gains saturation, the far field desaturates and
+    # washes toward a light haze. Radial (distance-from-centre) drives the wash so
+    # it reads as depth, not height. Composes with Lux: still defers shadow colour
+    # (shadow_warm=0) and lets Lux fog add the runtime distance haze on top.
+    "punch": DepthOptions(shadow_sat=0.34, shadow_warm=0.0,
+                          atmos=0.15, atmos_height=0.35, atmos_radial=0.65,
+                          near_sat=0.28, far_wash=0.5),
     "off": DepthOptions(),
 }
 
@@ -178,6 +190,46 @@ def apply_atmospheric(rgb: np.ndarray, recede: np.ndarray,
         return rgb
     amt = (opts.atmos * np.clip(recede, 0.0, 1.0))[:, None]
     return np.clip(rgb * (1.0 - amt) + _ATMOS_TARGET * amt, 0.0, 1.0)
+
+
+def apply_separation(rgb: np.ndarray, recede: np.ndarray,
+                     opts: DepthOptions) -> np.ndarray:
+    """Arcade plane separation: punchy saturated NEAR, washed-out FAR.
+
+    ``recede`` is the per-vertex 0..1 recession weight (1 = farthest). Two moves,
+    scaled by how near/far a vertex is:
+
+    * near (low recede) gains saturation (``near_sat``) — the foreground stays
+      punchy, colours pushed;
+    * far (high recede) desaturates toward its own luma and lerps toward a light
+      haze (``far_wash``) — the background washes out.
+
+    This is deliberately stronger and more stylised than :func:`apply_atmospheric`
+    (which just cools distance): it exaggerates the plane split for pop, the way
+    arcade/PS2 games leaned on read-at-a-glance depth. Composes on top of the
+    atmospheric pass, not instead of it.
+    """
+    if not (opts.near_sat or opts.far_wash):
+        return rgb
+    r = np.clip(recede, 0.0, 1.0)
+    out = rgb.copy()
+
+    # NEAR punch: saturation gain weighted by nearness (1 - recede), multiplicative
+    # so neutrals stay neutral (same guarantee as the shadow gradient).
+    if opts.near_sat:
+        near_w = (1.0 - r)
+        hsv = _rgb_to_hsv(out)
+        hsv[:, 1] = np.clip(hsv[:, 1] * (1.0 + opts.near_sat * near_w), 0.0, 1.0)
+        out = _hsv_to_rgb(hsv)
+
+    # FAR wash: desaturate toward luma, then lerp toward the light haze, both
+    # weighted by farness.
+    if opts.far_wash:
+        far_w = (opts.far_wash * r)[:, None]
+        luma = (out @ np.array([0.2126, 0.7152, 0.0722], np.float32))[:, None]
+        desat = out * (1.0 - far_w) + luma * far_w              # bleed to grey
+        out = desat * (1.0 - far_w) + _WASH_TARGET * far_w      # lift to haze
+    return np.clip(out, 0.0, 1.0)
 
 
 def recession_weight(positions: np.ndarray, up_axis: int,

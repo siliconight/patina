@@ -3,6 +3,26 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.14.0] — 2026-07-09
+
+Arcade plane separation — punchy saturated near vs washed-out far.
+
+### Added
+- **`apply_separation`** + **`punch` depth preset** (`--depth punch`): the near
+  field (low recession) gains saturation while the far field (high recession)
+  desaturates and washes toward a light haze. Leans hard into plane separation
+  for arcade/PS2 pop, on top of the atmospheric pass. `near_sat` / `far_wash`
+  options; multiplicative near-punch so neutrals stay neutral.
+
+### Honest scope
+- This is a **view-independent vertex bake**, so it separates a building's *own*
+  near/far faces — strong across a full level with deep sightlines, subtle on one
+  compact shell (on `gs_corner_station` the recession weight only spans 0.65–1.0,
+  so the building sits mostly in one plane). The **strong, camera-relative** far
+  wash is Lux's runtime distance fog — see the `delco_arcade` Lux preset
+  (Lux 0.9.2). Patina bakes the per-surface cue; Lux does the per-camera wash.
+- Opt-in; `off` and byte-identical when unused. 187 tests.
+
 ## [0.13.1] — 2026-07-09
 
 Pipeline smoke tests — prove the whole art-pass flow is repeatable before

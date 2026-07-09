@@ -179,3 +179,41 @@ def test_depth_on_changes_and_concentrates_saturation(shell, tmp_path):
         sat = np.where(mx > 1e-6, (mx - mn) / np.maximum(mx, 1e-6), 0)
         return float(np.percentile(sat, 99))
     assert sat_hi(o_on) > sat_hi(o_off)
+
+
+# --- arcade near/far separation (v0.14) ------------------------------------ #
+
+def test_separation_near_punch_far_wash():
+    o = depth.DepthOptions(near_sat=0.4, far_wash=0.6)
+    rgb = np.tile(np.array([0.6, 0.42, 0.36], np.float32), (3, 1))
+    recede = np.array([0.0, 0.5, 1.0], np.float32)   # near, mid, far
+    out = depth.apply_separation(rgb, recede, o)
+
+    def sat(c):
+        mx, mn = c.max(), c.min()
+        return (mx - mn) / max(mx, 1e-6)
+    # near stays punchy, far washes to near-grey
+    assert sat(out[0]) > sat(out[2])
+    # far lifts toward the light haze (lighter than near)
+    assert out[2].mean() > out[0].mean()
+
+
+def test_separation_neutral_stays_neutral():
+    # near-punch must not invent hue on a neutral grey (same guarantee as shadow)
+    o = depth.DepthOptions(near_sat=0.5)
+    grey = np.tile(np.array([0.5, 0.5, 0.5], np.float32), (3, 1))
+    out = depth.apply_separation(grey, np.zeros(3, np.float32), o)
+    assert np.allclose(out, grey, atol=1e-4)
+
+
+def test_separation_inactive_noop():
+    o = depth.DepthOptions()
+    rgb = np.random.default_rng(3).random((8, 3)).astype(np.float32)
+    assert np.array_equal(depth.apply_separation(rgb, np.ones(8), o), rgb)
+
+
+def test_punch_preset():
+    p = depth.DepthOptions.preset("punch")
+    assert p.near_sat > 0 and p.far_wash > 0
+    assert p.shadow_warm == 0.0          # still defers shadow colour to Lux
+    assert "punch" in depth.preset_names()

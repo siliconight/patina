@@ -104,7 +104,7 @@ import the `.glb`, click **Apply PS1 style**.
 | `--start-skins` | Write Texpaint-style triangle-unique start skins from authored UV0 (model skinning; UV0-less meshes are skipped). |
 | `--skin-size` | Start-skin sheet size in px (default 256). |
 | `--slot-variation` | With a DC `slots.json`: bake deterministic per-slot colour variation (keyed by `slot_id`) into vertex colour and emit `<out>.instances.json` — breaks modular repetition. |
-| `--depth` | Layer colour-theory depth cues: a preset name (`lux`, `delco`, `exterior`) or `off`. |
+| `--depth` | Layer colour-theory depth cues: a preset name (`lux`, `punch`, `delco`, `exterior`) or `off`. |
 | `--preview` | Render a composite look preview (`<out>.preview.png`) approximating vertex colour × Lux banded light, and report luma headroom. |
 | `--trim-sheet` | Generate a family-locked trim atlas (roof edge, panel seam, pipe run, corner guard, foundation, conduit, flashing) + UV-region map. |
 | `--dressing` | With `--anchors`: emit `<out>.dressing.json` — per-anchor non-collision cover build orders (trim piece + UV region + position) for Zoo. |

@@ -94,3 +94,21 @@ Use `--depth delco` (not `lux`) only when the build is viewed **without** Lux
   offline first with `patina --preview`** — it renders the composite and reports
   a luma headroom verdict; on delco the full stack sits at ~0.54 mean (fine).
 - `--depth lux` vs `delco` side by side under `delco_summer_afternoon`.
+
+## Plane separation (arcade near/far pop)
+
+"Punchy saturated near vs washed-out far" is split across the same seam as
+everything else: **Patina bakes the per-surface cue, Lux does the per-camera
+wash.** A vertex bake is view-independent, so it can only separate a surface's
+own near/far faces (strong across a deep level, weak on one compact building).
+The camera-relative wash — what actually washes out whatever is far from the
+*player* — is Lux runtime distance fog.
+
+- Patina: `--depth punch` (near_sat gains foreground saturation, far_wash
+  desaturates + lifts background toward haze, by world recession).
+- Lux: the `delco_arcade` preset — brighter HDR key (exposure 1.15, glow
+  threshold 1.25), punchy saturation 1.22 / contrast 1.1, and cooler denser fog
+  (0.006, cool-light colour) that builds the wash with camera distance.
+
+Tune the two together in the look-dev harness (preset key 6 = Delco Arcade);
+push fog for the far wash, saturation/exposure/glow for the near punch.
