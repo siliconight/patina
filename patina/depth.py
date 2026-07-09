@@ -25,6 +25,19 @@ live in the albedo/vertex data. That is a deliberate, stylistic departure from
 a strict PBR *albedo* map (pure unlit base colour): here the "diffuse" carries
 soft, view-independent depth cues on purpose.
 
+**Composing with Lux.** When Lux (the Godot runtime look framework) is present,
+it multiplies its lit result by this vertex colour and then does its own banded
+diffuse, shadow-tinting, palette pull and distance fog. Runtime light is Lux's
+job, so the things that *depend on* runtime light are too: **shadow colour**
+(Lux's ``shadow_tint`` / palette shadow) and **distance haze** (Lux's fog).
+Patina must not fight those — a warm shadow baked here versus Lux's cool delco
+shadow crosses into mud, and albedo-faked recession double-counts real fog. The
+``lux`` preset therefore bakes only what Lux *cannot* derive from geometry: the
+**saturation** that makes a cavity read as form (temperature deferred), and a
+gentle **height** recession only (radial distance deferred to fog). The
+``delco``/``exterior`` presets are for when Patina's vertex colour is the final
+look with no Lux at runtime — there Patina owns temperature and atmosphere.
+
 Everything is deterministic and opt-in. With depth off (the default until a
 theme/skin/flag enables it) vertex colour is byte-identical to v0.11.
 """
@@ -63,11 +76,21 @@ _COOL = np.array([0.72, 0.82, 1.0], np.float32)            # shadow cool bias
 _PRESETS: dict[str, DepthOptions] = {
     # a restrained late-90s interior/exterior look: warm deepening shadows,
     # gentle recession by height (upper walls fade toward the ceiling haze).
+    # Use this when Patina's vertex colour is the *final* look (no Lux at
+    # runtime) — it owns shadow temperature and atmosphere itself.
     "delco": DepthOptions(shadow_sat=0.35, shadow_warm=0.12, atmos=0.22,
                           atmos_height=0.7, atmos_radial=0.3),
-    # stronger separation for larger exteriors.
+    # stronger separation for larger exteriors (also standalone).
     "exterior": DepthOptions(shadow_sat=0.3, shadow_warm=-0.05, atmos=0.35,
                              atmos_height=0.5, atmos_radial=0.5),
+    # composes WITH Lux at runtime. Lux owns runtime light, so it owns shadow
+    # *colour* (its shadow_tint / palette shadow) and distance *fog*. Patina
+    # therefore bakes only what Lux can't derive from geometry: the saturation
+    # that makes a cavity read as form (shadow_warm=0, deferred to Lux), and a
+    # gentle height recession only (radial distance deferred to Lux fog). No
+    # double shadow-tint, no albedo-faked distance haze fighting real fog.
+    "lux": DepthOptions(shadow_sat=0.32, shadow_warm=0.0, atmos=0.12,
+                        atmos_height=1.0, atmos_radial=0.0),
     "off": DepthOptions(),
 }
 
@@ -128,8 +151,12 @@ def apply_shadow_gradient(rgb: np.ndarray, shadow: np.ndarray,
         return rgb
     hsv = _rgb_to_hsv(rgb)
     w = np.clip(shadow, 0.0, 1.0)
-    # saturation gain toward shadow (Jansson: gradients are saturated)
-    hsv[:, 1] = np.clip(hsv[:, 1] + opts.shadow_sat * w, 0.0, 1.0)
+    # saturation gain toward shadow (Jansson: gradients are saturated). This is
+    # *multiplicative* — it amplifies the chroma already present, so a neutral
+    # grey (saturation 0) stays neutral instead of gaining an invented red hue
+    # from HSV's undefined-hue-at-zero. Deepens the palette's own colour in
+    # shadow; it does not introduce a colour where there was none.
+    hsv[:, 1] = np.clip(hsv[:, 1] * (1.0 + opts.shadow_sat * w), 0.0, 1.0)
     out = _hsv_to_rgb(hsv)
     # temperature bias toward shadow: lerp a small amount to warm/cool tint
     if opts.shadow_warm:

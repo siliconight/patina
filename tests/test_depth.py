@@ -18,7 +18,9 @@ def test_hsv_roundtrip():
 
 def test_shadow_gradient_raises_saturation():
     o = depth.DepthOptions(shadow_sat=0.4, shadow_warm=0.0)
-    rgb = np.tile(np.array([0.5, 0.48, 0.46], np.float32), (5, 1))
+    # a chromatic base (warm palette) — multiplicative gain amplifies existing
+    # chroma; a fully neutral grey would (correctly) stay neutral.
+    rgb = np.tile(np.array([0.55, 0.45, 0.38], np.float32), (5, 1))
     shadow = np.linspace(0, 1, 5).astype(np.float32)
     out = depth.apply_shadow_gradient(rgb, shadow, o)
 
@@ -29,6 +31,14 @@ def test_shadow_gradient_raises_saturation():
     # saturation increases monotonically with shadow weight
     assert s[-1] > s[0]
     assert np.all(np.diff(s) >= -1e-6)
+
+
+def test_neutral_stays_neutral_under_saturation():
+    # the Lux-composition guarantee: a neutral grey gains no invented hue.
+    o = depth.DepthOptions(shadow_sat=0.5, shadow_warm=0.0)
+    grey = np.tile(np.array([0.5, 0.5, 0.5], np.float32), (5, 1))
+    out = depth.apply_shadow_gradient(grey, np.ones(5, np.float32), o)
+    assert np.allclose(out, grey, atol=1e-4)
 
 
 def test_shadow_warm_bias_shifts_temperature():
@@ -71,6 +81,21 @@ def test_presets_and_off():
     assert not depth.DepthOptions.preset("off").active()
     assert depth.DepthOptions.preset("delco").active()
     assert "delco" in depth.preset_names()
+
+
+def test_lux_preset_defers_tint_and_distance():
+    """The Lux-composition preset: keeps saturation (form), zero temperature
+    bias (Lux owns shadow colour), height-only recession (Lux fog owns
+    distance)."""
+    lux = depth.DepthOptions.preset("lux")
+    assert lux.shadow_sat > 0            # form kept
+    assert lux.shadow_warm == 0.0        # temperature deferred to Lux
+    assert lux.atmos_radial == 0.0       # distance haze deferred to Lux fog
+    assert lux.atmos_height > 0          # gentle height recession only
+    # on a neutral grey it injects no hue at all
+    grey = np.tile(np.array([0.5, 0.5, 0.5], np.float32), (4, 1))
+    out = depth.apply_shadow_gradient(grey, np.ones(4, np.float32), lux)
+    assert np.allclose(out, grey, atol=1e-4)
 
 
 def test_inactive_is_noop():
@@ -135,7 +160,7 @@ def test_depth_off_byte_identical(shell, tmp_path):
     assert _vhash(o1) == _vhash(o2)
 
 
-def test_depth_on_changes_and_raises_saturation(shell, tmp_path):
+def test_depth_on_changes_and_concentrates_saturation(shell, tmp_path):
     _, o_off = _run(shell, tmp_path / "a", ["--theme", "delco_1997_gas_station"])
     r_on, o_on = _run(shell, tmp_path / "b",
                       ["--theme", "delco_1997_gas_station", "--depth", "delco"])
@@ -143,10 +168,14 @@ def test_depth_on_changes_and_raises_saturation(shell, tmp_path):
     assert _vhash(o_off) != _vhash(o_on)
     from patina import gltf_io
 
-    def mean_sat(glb):
+    def sat_hi(glb):
+        # the deepest-shadow tail (p99) is where the saturated-gradient cue
+        # lives. Atmosphere desaturates the broad middle (mean/p90 fall), but
+        # the deepest cavities should get MORE saturated — that's the form cue.
         s = gltf_io.load_glb(glb)
         c = np.vstack([p.color[:, :3] for m in s.visual_meshes()
                        for p in m.primitives if p.color is not None])
         mx, mn = c.max(1), c.min(1)
-        return float(np.where(mx > 1e-6, (mx - mn) / np.maximum(mx, 1e-6), 0).mean())
-    assert mean_sat(o_on) > mean_sat(o_off)
+        sat = np.where(mx > 1e-6, (mx - mn) / np.maximum(mx, 1e-6), 0)
+        return float(np.percentile(sat, 99))
+    assert sat_hi(o_on) > sat_hi(o_off)

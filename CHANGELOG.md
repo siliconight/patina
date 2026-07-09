@@ -3,6 +3,33 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.12.1] — 2026-07-09
+
+Reconcile the depth pass with Lux (the Godot runtime look framework), after
+reading how Lux composes with the baked vertex colour.
+
+### Fixed
+- **Saturation gain is now multiplicative, not additive.** On a *neutral* grey
+  (Zoo's default concrete) the additive gain invented a red hue from HSV's
+  undefined-hue-at-zero — it would have tinted plain surfaces red in shadow.
+  Multiplicative gain amplifies the chroma already present and leaves neutrals
+  neutral (pinned by `test_neutral_stays_neutral_under_saturation`).
+
+### Added
+- **`lux` depth preset** — composes with Lux instead of fighting it. Lux does
+  runtime light, so it owns shadow *colour* (`shadow_tint` / palette) and
+  distance *fog*; the `lux` preset bakes only what Lux can't derive: shadow
+  *saturation* (form, `shadow_warm=0`) and gentle *height* recession
+  (`atmos_radial=0`, distance deferred to fog). `delco`/`exterior` stay for the
+  standalone (no-Lux) case where Patina's vertex colour is the final look.
+- **`docs/LOOK_PIPELINE.md`** — the full cross-tool composition chain (DC → Zoo
+  → Patina → Lux), who owns which cue, and the reconciliations.
+
+### Note
+- These are the correct division under Lux: bake view-independent *form*, defer
+  light-dependent *colour* to the renderer. Depth still off by default;
+  byte-identical when off.
+
 ## [0.12.0] — 2026-07-09
 
 The "depth & cohesion" release — colour-theory shading instead of flat value

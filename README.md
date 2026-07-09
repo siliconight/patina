@@ -480,9 +480,17 @@ tutorial and the depth/colour-theory sources:
   alternation).
 
 ```bash
-patina shell.glb --theme delco_1997_gas_station --depth delco
-patina shell.glb --depth exterior      # stronger plane separation for exteriors
+patina shell.glb --theme delco_1997_gas_station --depth lux    # composes with Lux at runtime
+patina shell.glb --theme delco_1997_gas_station --depth delco  # standalone (no Lux) — owns the whole look
+patina shell.glb --depth exterior      # stronger plane separation, standalone
 ```
+
+Use `--depth lux` when Lux lights the scene in Godot: Lux owns runtime light, so
+it owns shadow *colour* and distance *fog*, and the `lux` preset bakes only what
+Lux can't derive — shadow *saturation* (form) and gentle height recession. Use
+`--depth delco`/`exterior` only when the build is viewed **without** Lux. See
+`docs/LOOK_PIPELINE.md` for the full DC → Zoo → Patina → Lux composition and who
+owns which cue.
 
 A PS1-era look has no real-time GI, so these cues are baked into vertex colour
 and tiles on purpose — a deliberate departure from a strict unlit PBR *albedo*.
