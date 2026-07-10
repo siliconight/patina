@@ -50,6 +50,8 @@ TRIM_PIECES: dict[str, dict] = {
     "foundation":  {"pattern": {"type": "block", "rows": 3, "cols": 6}, "h": 0.24},
     "conduit":     {"pattern": {"type": "panel", "cols": 8, "line_px": 2}, "h": 0.10},
     "flashing":    {"pattern": {"type": "plank", "rows": 1, "line_px": 1}, "h": 0.12},
+    "frame":       {"pattern": {"type": "plank", "rows": 1, "line_px": 2}, "h": 0.08},
+    "pilaster":    {"pattern": {"type": "block", "rows": 4, "cols": 1}, "h": 0.12},
 }
 
 # Which trim piece each anchor kind suggests as its cover (the dressing map).

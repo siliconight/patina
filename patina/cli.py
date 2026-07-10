@@ -20,7 +20,7 @@ import os
 import shutil
 import sys
 
-from . import (anchors, banding, decals, depth as depth_mod, families, paneling,
+from . import (anchors, banding, decals, depth as depth_mod, families, framing, paneling,
                gltf_io, manifest, nuance, overrides, palette, skins, slots,
                surfaces, templates, themes, trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
@@ -359,18 +359,30 @@ def run(args: argparse.Namespace) -> dict:
             with open(sheet_path, "wb") as fh:
                 fh.write(sheet_bytes)
             panels = []
-            if args.panel_fields:
-                if slot_manifest is None:
-                    print("patina: --panel-fields skipped (no DC slots.json "
-                          "for this shell; panel grids ride wall slots)")
-                elif args.anchor_patina_space:
-                    raise SystemExit(
-                        "patina: --panel-fields emits spec-space orders and "
-                        "cannot combine with --anchor-patina-space")
-                else:
-                    panels = paneling.panel_orders(
-                        slot_manifest, regions, seed=args.seed,
-                        panel=args.panel_size, gap=args.panel_gap)
+            facade_flags = (args.panel_fields or args.frames or args.gutters
+                            or args.pilasters)
+            if facade_flags and slot_manifest is None:
+                print("patina: facade-kit flags skipped (no DC slots.json "
+                      "for this shell)")
+            elif facade_flags and args.anchor_patina_space:
+                raise SystemExit(
+                    "patina: facade-kit flags emit spec-space orders and "
+                    "cannot combine with --anchor-patina-space")
+            elif facade_flags:
+                if args.frames:
+                    panels += framing.frame_orders(slot_manifest, regions,
+                                                   seed=args.seed)
+                if args.gutters:
+                    panels += framing.gutter_orders(slot_manifest, regions,
+                                                    seed=args.seed)
+                if args.pilasters:
+                    panels += framing.pilaster_orders(slot_manifest, regions,
+                                                      seed=args.seed)
+            if args.panel_fields and slot_manifest is not None \
+                    and not args.anchor_patina_space:
+                panels += paneling.panel_orders(
+                    slot_manifest, regions, seed=args.seed,
+                    panel=args.panel_size, gap=args.panel_gap)
             dm = trim.dressing_manifest(
                 emit_list, regions, seed=args.seed,
                 source=os.path.basename(out_glb),
@@ -514,6 +526,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="generate a family-locked trim atlas (roof edge, panel "
                         "seam, pipe run, corner guard, foundation, conduit, "
                         "flashing) to <out>.trim.png + a UV-region map")
+    p.add_argument("--frames", action="store_true",
+                   help="with --dressing + slots.json: one frame cover order "
+                        "per doorway/window opening (exact rect from DC's "
+                        "fit.openings)")
+    p.add_argument("--gutters", action="store_true",
+                   help="with --dressing + slots.json: a gutter_run per "
+                        "exterior wall slot, just under the roofline")
+    p.add_argument("--pilasters", action="store_true",
+                   help="with --dressing + slots.json: a vertical pilaster "
+                        "at each exterior wall slot's module seam")
     p.add_argument("--panel-fields", action="store_true",
                    help="with --dressing + a DC slots.json: emit one "
                         "panel_field cover order per grid cell on every "

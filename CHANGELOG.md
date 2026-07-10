@@ -3,6 +3,29 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.18.0] - 2026-07-10
+
+### Added
+- **Facade kit** (`patina/framing.py`; `--frames`, `--gutters`,
+  `--pilasters`, each with `--dressing` + a DC slots.json) — the rest of
+  the architectural-depth bucket, as thin non-collision covers:
+  - `--frames`: one `frame` order per doorway/window opening. DC exports
+    the exact opening rect (`fit.openings`: width/height/sill), so frames
+    target the hole, not the module — a 3.0x3.0 garage door and a
+    sill-lifted window each get a correctly sized, correctly centred
+    picture frame. `opening_kind` and `frame_width` ride the order.
+  - `--gutters`: a `gutter_run` per exterior wall slot just under the
+    roofline; sections join at module seams like real gutters.
+  - `--pilasters`: a vertical `pilaster` at each exterior wall slot's left
+    module seam — columns at sixth-gen fidelity. `size2` = [width, wall
+    height].
+- Trim atlas gained `frame` and `pilaster` pieces (regions shift; the
+  atlas + manifest are always emitted as a set, so nothing desyncs).
+- All three share the panel-fields contract: slots.json required,
+  spec-space only, deterministic, zero geometry from Patina. Verified on
+  gs_corner_station: 13 frames / 70 gutters / 70 pilasters joining 509
+  panels + 211 anchor covers (873 orders). Pairs with **Zoo v0.26.0**.
+
 ## [0.17.0] - 2026-07-10
 
 ### Added
