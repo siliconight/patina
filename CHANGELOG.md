@@ -3,6 +3,28 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.17.0] - 2026-07-10
+
+### Added
+- **Panel fields** (`patina/paneling.py`, `--panel-fields` with `--dressing`):
+  the highest-ROI facade cover. Every exterior wall slot gets a uniform grid
+  of thin proud panel orders (cover `panel_field`, 3cm proud via Zoo) — same
+  collision, and the gaps between panels give a flat greybox wall its shadow
+  lines. Rides the modular alignment instead of geometry analysis: DC's
+  slots.json already partitions facades into wall/doorway/window slots, so
+  openings never need hole math — a doorway simply isn't a wall slot.
+  Requires slots.json (skipped with a note otherwise) and spec-space
+  manifests (refuses `--anchor-patina-space`).
+- Orders carry `size2` = [face width, face height] (exact grid cells;
+  `size` stays the scalar width so a pre-0.24 Zoo degrades to a strip
+  instead of crashing). `--panel-size` (default 1.2m) / `--panel-gap`
+  (default 3cm). Deterministic: grids are arithmetic; `seed_offset` from
+  `(seed, "panel", slot_id, col, row)`. Budget-clamped (2000 orders).
+- `dressing_manifest` gains `extra_orders` for pre-built spec-space orders.
+- Verified against the real gs_corner_station shell: 509 panel orders
+  across 70 exterior wall slots, joining the existing anchor covers.
+  Pairs with **Zoo v0.24.0** (`panel_field` cover kind).
+
 ## [0.16.0] - 2026-07-10
 
 ### Added

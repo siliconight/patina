@@ -20,7 +20,7 @@ import os
 import shutil
 import sys
 
-from . import (anchors, banding, decals, depth as depth_mod, families,
+from . import (anchors, banding, decals, depth as depth_mod, families, paneling,
                gltf_io, manifest, nuance, overrides, palette, skins, slots,
                surfaces, templates, themes, trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
@@ -358,11 +358,25 @@ def run(args: argparse.Namespace) -> dict:
             sheet_path = out_glb[:-4] + ".trim.png"
             with open(sheet_path, "wb") as fh:
                 fh.write(sheet_bytes)
+            panels = []
+            if args.panel_fields:
+                if slot_manifest is None:
+                    print("patina: --panel-fields skipped (no DC slots.json "
+                          "for this shell; panel grids ride wall slots)")
+                elif args.anchor_patina_space:
+                    raise SystemExit(
+                        "patina: --panel-fields emits spec-space orders and "
+                        "cannot combine with --anchor-patina-space")
+                else:
+                    panels = paneling.panel_orders(
+                        slot_manifest, regions, seed=args.seed,
+                        panel=args.panel_size, gap=args.panel_gap)
             dm = trim.dressing_manifest(
                 emit_list, regions, seed=args.seed,
                 source=os.path.basename(out_glb),
                 sheet_file=os.path.basename(sheet_path),
-                space=space, building_id=building_id)
+                space=space, building_id=building_id,
+                extra_orders=panels)
             dpath = out_glb[:-4] + ".dressing.json"
             with open(dpath, "w", encoding="utf-8") as fh:
                 json.dump(dm, fh, indent=2, sort_keys=True)
@@ -500,6 +514,16 @@ def build_parser() -> argparse.ArgumentParser:
                    help="generate a family-locked trim atlas (roof edge, panel "
                         "seam, pipe run, corner guard, foundation, conduit, "
                         "flashing) to <out>.trim.png + a UV-region map")
+    p.add_argument("--panel-fields", action="store_true",
+                   help="with --dressing + a DC slots.json: emit one "
+                        "panel_field cover order per grid cell on every "
+                        "exterior wall slot (thin proud panels; the "
+                        "highest-ROI facade cover). Requires spec-space "
+                        "manifests (not --anchor-patina-space)")
+    p.add_argument("--panel-size", type=float, default=1.2,
+                   help="target panel edge in metres (default 1.2)")
+    p.add_argument("--panel-gap", type=float, default=0.03,
+                   help="gap between panels in metres (default 0.03)")
     p.add_argument("--dressing", action="store_true",
                    help="with --anchors: emit <out>.dressing.json — per-anchor "
                         "non-collision cover build orders (trim piece + UV "

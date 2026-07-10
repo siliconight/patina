@@ -170,9 +170,16 @@ def dressing_orders(anchors: list, regions: list[TrimRegion], *,
 
 def dressing_manifest(anchors: list, regions: list[TrimRegion], *, seed: int,
                       source: str, sheet_file: str, space: str,
-                      building_id: str | None = None) -> dict:
-    """The ``<out>.dressing.json`` payload: atlas + per-anchor build orders."""
+                      building_id: str | None = None,
+                      extra_orders: list[dict] | None = None) -> dict:
+    """The ``<out>.dressing.json`` payload: atlas + per-anchor build orders.
+
+    ``extra_orders`` are pre-built orders appended verbatim (v0.17 panel
+    fields) — they must already be in ``space``.
+    """
     orders = dressing_orders(anchors, regions, seed=seed)
+    if extra_orders:
+        orders = orders + list(extra_orders)
     kinds: dict[str, int] = {}
     for o in orders:
         kinds[o["cover"]] = kinds.get(o["cover"], 0) + 1
