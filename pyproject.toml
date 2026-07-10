@@ -26,6 +26,7 @@ bevel = ["bpy"]
 
 [project.scripts]
 patina = "patina.cli:main"
+patina-photo = "patina.photo:main"
 
 [tool.setuptools]
 packages = ["patina", "patina.schema"]

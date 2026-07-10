@@ -3,6 +3,29 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.16.0] - 2026-07-10
+
+### Added
+- **Photo projection** (`patina/photo.py`, new `patina-photo` CLI): rectified
+  photo regions as texture sources. One angled reference photo of a real
+  storefront becomes several period-correct textures: mark each region's four
+  corners (TL,TR,BR,BL) in a savable JSON spec, and Patina
+  perspective-rectifies the quad, box-downscales at 2x supersampling,
+  posterizes, optionally locks to a colour family (extracted from the same
+  photo via the existing `families.extract`, so procedural slots harmonize
+  with the photo textures), and optionally makes wall/floor regions
+  seamlessly tileable (half-offset + blend band).
+- Output drops straight into existing machinery: `<out>/<key>.png` per
+  region, `<out>/overrides.json` ready for `--overrides` (marked
+  `"process": false` — regions are already crushed, and `import_tile`'s
+  square centre-crop would destroy non-square signs), `<out>/family.json`
+  when extracted, and `<out>/photo_manifest.json` with the source sha256 +
+  spec echo for traceability.
+- Honest-seams position: choosing *which* rectangle of the world becomes a
+  texture is human judgment and lives in the spec; everything after the
+  corners is mechanical. Deterministic — pure function of source bytes +
+  spec, no randomness.
+
 ## [0.15.0] — 2026-07-09
 
 Surface mottle — the mid-frequency tonal breakup that stops big flat walls

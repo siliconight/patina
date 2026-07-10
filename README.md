@@ -57,6 +57,12 @@ patina shell.glb --mode byo --textures ./my_textures
 # Budget control / tuning:
 patina shell.glb --no-bevel --no-densify --target-edge 1.0 --posterize 16
 
+# Photo textures: rectify regions of a reference photo into a texture set,
+# then feed them back in as overrides (see patina/photo.py for the spec):
+patina-photo storefront_spec.json
+patina shell.glb --mode procedural --overrides ./photo_textures/overrides.json \
+       --family ./photo_textures/family.json
+
 # Theme it: 1997 Delco gas station palette + grime decal pass:
 patina shell.glb --mode procedural --theme delco_1997_gas_station
 
