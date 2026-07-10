@@ -66,6 +66,8 @@ class NuanceOptions:
     ao_strength: float = _AO_STRENGTH
     grime_strength: float = _GRIME_STRENGTH
     grime_height: float = _GRIME_HEIGHT
+    mottle_strength: float = 0.0     # mid-freq surface value breakup (0 = off)
+    mottle_scale: float = 1.5        # world-space size (m) of largest variation
 
 
 # --------------------------------------------------------------------------- #
@@ -352,6 +354,41 @@ def _height_grime(prim: Primitive, strength: float, height: float,
     return 1.0 - strength * t
 
 
+def _surface_mottle(prim: Primitive, strength: float, scale: float) -> np.ndarray:
+    """Coherent per-vertex value variation across a surface — the mid-frequency
+    tonal breakup that stops a big flat wall reading as one uniform tone.
+
+    Unlike ``_height_grime`` (a smooth floor-ward ramp) and edge AO (darkens
+    borders), this varies the *interior* of a face. It sums a few octaves of a
+    smooth hash of world position, so adjacent vertices move together (weathered
+    surface, not random speckle). Returns a multiplier centred on 1.0, so it
+    only nudges value and never invents hue — neutrals stay neutral.
+
+    ``scale`` is the world-space size of the largest variation (metres);
+    ``strength`` is the peak +/- value swing (0 => 1.0 everywhere, no-op).
+    """
+    if strength <= 0.0:
+        return np.ones(prim.vertex_count(), np.float32)
+    p = prim.positions.astype(np.float32)
+    acc = np.zeros(prim.vertex_count(), np.float32)
+    amp = 1.0
+    freq = 1.0 / max(scale, 1e-3)
+    total = 0.0
+    for _ in range(3):                       # 3 octaves of smooth value noise
+        # smooth hash: sin of a few incommensurate projections -> [-1,1], cheap
+        # and tileable-free (world-space, so it doesn't swim with UVs).
+        q = p * freq
+        n = (np.sin(q[:, 0] * 1.7 + q[:, 1] * 2.3 + q[:, 2] * 1.1)
+             + np.sin(q[:, 0] * 2.9 - q[:, 2] * 1.9 + 4.1)
+             + np.sin(q[:, 1] * 3.3 + q[:, 2] * 2.7 - 1.3)) / 3.0
+        acc += amp * n
+        total += amp
+        amp *= 0.5
+        freq *= 2.1
+    acc /= max(total, 1e-6)                   # back to ~[-1,1]
+    return (1.0 + strength * acc).astype(np.float32)
+
+
 def vertex_color(scene: Scene, opts: NuanceOptions,
                  tints: dict[SurfaceRole, np.ndarray] | None = None,
                  bands: dict | None = None,
@@ -393,6 +430,8 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
             ao = _edge_cavity_ao(prim, opts.ao_strength)
             grime = _height_grime(prim, opts.grime_strength, opts.grime_height,
                                   up_axis)
+            mottle = _surface_mottle(prim, opts.mottle_strength,
+                                     opts.mottle_scale)
 
             if use_depth:
                 # shadow weight: how much this vertex is darkened by AO+grime,
@@ -407,7 +446,7 @@ def vertex_color(scene: Scene, opts: NuanceOptions,
                     tint = depth_mod.apply_atmospheric(tint, recede, depth_opts)
                     tint = depth_mod.apply_separation(tint, recede, depth_opts)
 
-            rgb = np.clip(tint * ao[:, None] * grime[:, None], 0.0, 1.0
-                          ).astype(np.float32)
+            rgb = np.clip(tint * ao[:, None] * grime[:, None] * mottle[:, None],
+                          0.0, 1.0).astype(np.float32)
             alpha = np.ones((prim.vertex_count(), 1), np.float32)
             prim.color = np.hstack([rgb, alpha])

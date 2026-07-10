@@ -3,6 +3,27 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.15.0] — 2026-07-09
+
+Surface mottle — the mid-frequency tonal breakup that stops big flat walls
+reading as one uniform tone. The last texture-density gap after the look-dev
+pass showed the grade was carrying the walls but the surfaces were too clean.
+
+### Added
+- **`--mottle`** (+ `--mottle-scale`): coherent per-vertex value variation from
+  world position, summed over 3 octaves so adjacent vertices move together
+  (weathered surface, not random speckle). Multiplier centred on 1.0 — only
+  nudges value, never invents hue, so neutrals stay neutral. Unlike height-grime
+  (a floor-ward ramp) and edge AO (darkens borders), mottle varies the *interior*
+  of a face. Needs densify for vertex resolution (walls: 2880 → 13k+ verts →
+  mottle reads). `~0.2-0.3` typical; `0` = off, byte-identical.
+
+### Why it matters
+- Confirmed via the look-dev harness (SkyMint dusk/blue-hour shots): at correct
+  exposure the building holds up, but the big wall faces read flat. Mottle raises
+  within-face value spread (0.097 → 0.108 at 0.30) so the surface has life once
+  Lux light rakes across it. 190 tests.
+
 ## [0.14.0] — 2026-07-09
 
 Arcade plane separation — punchy saturated near vs washed-out far.

@@ -62,3 +62,43 @@ def test_edge_cavity_ao_darkens_edges(shell):
     prim = wall.primitives[0]
     lum = prim.color[:, :3].mean(axis=1)
     assert np.percentile(lum, 95) - np.percentile(lum, 5) > 0.1
+
+
+# --- surface mottle (v0.15) ------------------------------------------------- #
+
+def test_mottle_off_is_noop():
+    import numpy as np
+    from patina import nuance
+    from patina.mesh import Primitive
+    p = Primitive(
+        positions=np.random.default_rng(1).random((100, 3)).astype(np.float32),
+        indices=np.arange(99).astype(np.uint32))
+    m = nuance._surface_mottle(p, 0.0, 1.5)
+    assert np.allclose(m, 1.0)          # strength 0 => multiplier 1 everywhere
+
+
+def test_mottle_centered_on_one():
+    import numpy as np
+    from patina import nuance
+    from patina.mesh import Primitive
+    p = Primitive(
+        positions=(np.random.default_rng(2).random((2000, 3)) * 10).astype(np.float32),
+        indices=np.arange(1999).astype(np.uint32))
+    m = nuance._surface_mottle(p, 0.25, 1.5)
+    # mean ~1.0 (only nudges value, doesn't brighten/darken overall)
+    assert abs(float(m.mean()) - 1.0) < 0.05
+    # actually varies (not flat)
+    assert float(m.std()) > 0.02
+    # stays positive
+    assert float(m.min()) > 0.0
+
+
+def test_mottle_coherent_not_speckle():
+    # adjacent points should have similar mottle (smooth), unlike random noise.
+    import numpy as np
+    from patina import nuance
+    from patina.mesh import Primitive
+    base = np.array([[1.0, 1.0, 1.0], [1.01, 1.0, 1.0]], np.float32)  # 1cm apart
+    p = Primitive(positions=base, indices=np.array([0], np.uint32))
+    m = nuance._surface_mottle(p, 0.3, 1.5)
+    assert abs(float(m[0]) - float(m[1])) < 0.02      # near-identical => coherent

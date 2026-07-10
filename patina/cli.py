@@ -102,6 +102,8 @@ def run(args: argparse.Namespace) -> dict:
         vertex_color=True,
         target_edge=args.target_edge,
         max_subdiv=args.max_subdiv,
+        mottle_strength=args.mottle,
+        mottle_scale=args.mottle_scale,
     )
     if opts.densify:
         nuance.densify(scene, opts)
@@ -530,6 +532,12 @@ def build_parser() -> argparse.ArgumentParser:
                    help="disable bevel sub-step (budget control)")
     p.add_argument("--no-densify", action="store_true",
                    help="disable densify sub-step (budget control)")
+    p.add_argument("--mottle", type=float, default=0.0,
+                   help="surface mottle strength: mid-freq value breakup on flat "
+                        "faces so walls aren't one tone (0=off, ~0.2-0.3 typical). "
+                        "Needs densify for resolution.")
+    p.add_argument("--mottle-scale", type=float, default=1.5,
+                   help="world-space size (m) of the largest mottle variation")
     p.add_argument("--texel", type=float, default=2.0,
                    help="world-space metres per texture tile (UV density)")
     p.add_argument("--posterize", type=int, default=16,

@@ -502,6 +502,21 @@ output is byte-identical to v0.11. On the geometry side, Zoo (0.22.0) bakes a
 matching cool-up / warm-down directional ambient into module vertex colour, so
 modules have form before Patina runs.
 
+## Surface mottle (texture density)
+
+Big flat walls read as one tone until something varies their *interior* —
+height-grime ramps the floor, edge AO darkens borders, but the middle of a wall
+face stays uniform. `--mottle` adds coherent world-space value noise (3 octaves,
+smooth so it's weathering not speckle) that breaks up the flats. It only nudges
+value (centred on 1.0, neutrals stay neutral) and needs densify for resolution.
+
+```bash
+patina building.glb --mottle 0.28 --depth punch --theme delco_1997_gas_station ...
+```
+
+Subtle at the bake level by design — Lux's lighting and grade amplify it. This
+is the finishing texture pass: form was never the problem, flatness was.
+
 ## Smoke tests — is the pipeline repeatable?
 
 Before building levels on the flow, prove it holds end to end:
