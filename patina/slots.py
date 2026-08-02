@@ -119,6 +119,18 @@ class Slot:
                 "slot %r has no fit.dims; its size is unknown" % self.slot_id)
         return (float(self.dims[0]), float(self.dims[1]), float(self.dims[2]))
 
+    def base_z(self) -> float:
+        """The slot's own floor plane, in Blender Z-up metres.
+
+        ``pivot`` says whether ``translation`` names the module's base or its
+        centre. Every manifest measured so far is ``center``; the ``base``
+        branch is kept because DC may author either and a rule with one
+        untaken branch is still one rule.
+        """
+        h = self.size()[2]
+        tz = float(self.translation[2])
+        return tz if self.pivot == "base" else tz - h / 2.0
+
     def patina_role(self) -> str:
         return _ROLE_MAP.get(self.role, "wall")
 
@@ -147,6 +159,27 @@ class SlotManifest:
         for s in self.slots:
             out[s.role] = out.get(s.role, 0) + 1
         return out
+
+    def storey_base(self, story: int = 0) -> Optional[float]:
+        """A storey's floor plane in Blender Z-up metres, or None if unknown.
+
+        **The ground is not the bottom of the building.**
+        ``COORDINATE_CONTRACT.md`` puts the basement at story -1, so the lowest
+        geometry a shell owns is below grade. Measured on
+        ``lf_category5_baie_dore_001_5421``: story -1 runs -4.00 .. -0.30,
+        story 0 starts at 0.00, and the exterior wall MESH reaches -4.30 --
+        three different numbers, only one of which is the street. Anything
+        placed "at the foot of the wall" for a player to see (curbs, base
+        courses, dumpsters) wants this, never a mesh minimum.
+
+        Taken as a minimum rather than asserted unique. Story 0's base is
+        single-valued at 0.00 on both a 3-storey shell and a 1-storey gas
+        station, but a stepped site would make it plural, and the lowest floor
+        of a storey is still that storey's ground.
+        """
+        bases = [s.base_z() for s in self.slots
+                 if s.dims and s.story is not None and int(s.story) == story]
+        return min(bases) if bases else None
 
 
 def parse(raw: dict) -> SlotManifest:

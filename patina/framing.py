@@ -57,9 +57,8 @@ def _face(slot, lx: float, lz_abs: float):
 
 
 def _base_z(slot) -> float:
-    h = slot.size()[2]
-    tz = float(slot.translation[2])
-    return tz if slot.pivot == "base" else tz - h / 2.0
+    """The module's own floor plane. One rule, in :meth:`Slot.base_z`."""
+    return slot.base_z()
 
 
 def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,

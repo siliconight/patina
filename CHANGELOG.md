@@ -3,6 +3,66 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.19.0] - 2026-08-02
+
+### Fixed
+- **A slot's `dims` and `scale` are one measurement, not two factors**
+  (`patina/slots.py`, `framing.py`, `paneling.py`). DC authors a wall
+  remainder (`size_mod == "end"`) as a unit box and rides the real size on
+  the per-slot scale, so `fit.dims` and `transform.scale` both encode the
+  same box. Nine sites multiplied them, squaring every remainder wall: a
+  3.7 m storey became 13.69 and put a `gutter_run` at z 12.61 on a
+  building whose roof is at 7.4. Collapsed into one documented
+  `Slot.size()`. Measured across two shipped manifests — 387 slots, every
+  `end` slot has `scale == dims`, every `full` slot has `scale ==
+  (1,1,1)`, zero exceptions. On `category5_baie_dore_001`, cover z_max
+  drops 12.62 → 7.62 against a highest module top of 8.00; 45 of 1988
+  orders move and 15 phantom panel rows disappear.
+- **Ground dressing measured from the foundation, not the street**
+  (`patina/anchors.py`). A wall segment is bucketed by wall *plane*, so
+  every storey of a facade collapses into one row spanning `z_lo -4.30`
+  (below the basement slab) to `z_hi 9.00` (the parapet) — 13.30 m
+  against a walkable range of 12.00. `wall_base` and `ground_edge` emitted
+  at `z_lo`, so every base course and curb was buried 4.30 m under the
+  street. Both now take storey 0's floor plane from the slot manifest
+  (`SlotManifest.storey_base`), which is 0.00 on every building measured.
+  `roofline` is unchanged: a parapet cap a metre above the roof slab is
+  architecture. Shells with no slots.json fall back to the segment
+  minimum, which is correct for the single-storey shells that carry no
+  manifest, and the CLI says which rule it used
+  (`anchor_ground_plane`).
+- **Conduit ran to nothing.** `exterior_light` (cover `conduit_run`) was
+  placed at 0.75 of the segment's full height — 5.67 m, a third-storey
+  height — on `light_spacing` centres, referring to no light at all. DC
+  already derives every exterior wall pack and the storefront sign from
+  the real door openings and ships them in `<name>.lights.json`, so a
+  conduit now runs to the fixture it feeds: 60 invented runs at
+  4.77..5.67 become 4 real ones at 2.45..2.85. For this kind `size` is
+  the run length (ground plane → fixture) rather than a footprint hint,
+  and `tag` carries the DC anchor id so a conduit is traceable to its
+  light. With no light manifest, none are emitted — a conduit runs *to*
+  something.
+- `--extract-family IMAGE[:K]` split a Windows path on its drive-letter
+  colon: `partition(":")` read `C:\Temp\ref.jpg:5` as image `C` and count
+  `\Temp\ref.jpg:5`, and `int()` raised. Posix paths carry no drive
+  letter, so the suite was green on Linux and red on the machine that
+  runs the tool. Splits on the last colon now, and only when digits
+  follow.
+
+### Added
+- `Scene.lights` / `gltf_io._load_lights` — the `<name>.lights.json`
+  sidecar, read on the same convention as slots and gameplay. Patina
+  still emits no lights; it reads these so dressing that depends on a
+  fixture can be placed against the real one.
+- `anchors.blender_to_canonical` — DC Blender Z-up into the frame the
+  anchor math runs in, *composed* from `slots.blender_to_patina` and
+  `_up_to_z` rather than written out, so it cannot drift from the passes
+  it must agree with. For a DC export the vertical coordinate is
+  unchanged, which is what lets a ground plane come straight off the slot
+  manifest.
+- `Slot.base_z` / `SlotManifest.storey_base` — a module's own floor plane
+  and a storey's, in one place. `framing._base_z` now delegates.
+
 ## [0.18.0] - 2026-07-10
 
 ### Added

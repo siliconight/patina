@@ -150,12 +150,31 @@ def load_glb(path: str) -> Scene:
     scene.gameplay = _load_gameplay(path)
     # Pick up the sibling slots.json (DC's modular art-pass manifest, v1.x).
     scene.slots = _load_slots(path)
+    # And the sibling lights.json -- dressing that depends on a light needs to
+    # know where the light is (v0.19).
+    scene.lights = _load_lights(path)
     return scene
 
 
 def _load_slots(glb_path: str) -> Optional[dict]:
     base = glb_path[:-4] if glb_path.lower().endswith(".glb") else glb_path
     for cand in (base + ".slots.json", glb_path + ".slots.json"):
+        if os.path.exists(cand):
+            with open(cand, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+    return None
+
+
+def _load_lights(glb_path: str) -> Optional[dict]:
+    """DC's sibling ``<name>.lights.json``, if the shell carries one.
+
+    Same convention as slots/gameplay. Patina emits no lights; it reads this so
+    the dressing that DEPENDS on a light -- the conduit run up a wall to a wall
+    pack -- terminates at the fixture DC derived from the real door openings,
+    instead of at a fraction of the building's height.
+    """
+    base = glb_path[:-4] if glb_path.lower().endswith(".glb") else glb_path
+    for cand in (base + ".lights.json", glb_path + ".lights.json"):
         if os.path.exists(cand):
             with open(cand, "r", encoding="utf-8") as fh:
                 return json.load(fh)

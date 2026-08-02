@@ -62,6 +62,15 @@ class AnchorOptions:
     ground_spacing: float = 2.0          # metres between ground-edge details
     max_per_kind: int = 64               # budget clamp per kind
     kinds: tuple[str, ...] = ANCHOR_KINDS
+    #: Storey 0's floor plane in the CANONICAL Z-up frame -- see
+    #: :func:`blender_to_canonical`. None means "unknown", which falls the
+    #: ground families back to the segment minimum (correct for the
+    #: single-storey shells that carry no manifest, wrong for anything with a
+    #: basement, and recorded as such in the sidecar).
+    ground_z: float | None = None
+    #: ``(pos, anchor_id)`` per real exterior fixture, positions already in the
+    #: canonical frame. Empty means no light manifest was found.
+    conduit_targets: tuple = ()
 
 
 def _visual_aabb(scene: Scene):
@@ -167,6 +176,60 @@ def _z_to_up(vec, up_axis: int):
     return (z, y, x)
 
 
+def blender_to_canonical(p, up_axis: int) -> tuple:
+    """A DC Blender Z-up point in the frame the anchor math runs in.
+
+    COMPOSED from the two conversions that already exist rather than derived by
+    hand: :func:`slots.blender_to_patina` puts a DC point in Patina's baked
+    glTF space, and :func:`_up_to_z` permutes that into the canonical Z-up
+    view. Composing beats deriving because the composition cannot drift away
+    from the passes it has to agree with -- and because writing this
+    permutation out by hand is exactly the mistake that produced equal and
+    opposite errors on two axes three times in one afternoon.
+
+    For a DC export (``up_axis == 1``) the composition works out to
+    ``(x, -y, z)``: the VERTICAL COORDINATE IS UNCHANGED, so a Blender-space
+    height and a canonical height are the same number. That is what lets
+    ``ground_z`` come straight off the slot manifest. It is asserted by
+    :func:`test_blender_z_is_canonical_z` rather than trusted.
+
+    ``up_axis == 2`` is a legacy hand-authored Z-up shell, which is already in
+    DC's frame and needs no conversion. Such shells carry no DC manifest, so
+    this branch exists for completeness, not for the pipeline.
+    """
+    if up_axis == 2:
+        return (float(p[0]), float(p[1]), float(p[2]))
+    from .slots import blender_to_patina
+    q = np.array([blender_to_patina(p)], dtype=np.float64)
+    return tuple(float(v) for v in _up_to_z(q, up_axis)[0])
+
+
+def conduit_targets(light_manifest, up_axis: int,
+                    kinds=("wall_pack", "sign")) -> tuple:
+    """``((pos, anchor_id), ...)`` for the exterior fixtures conduit runs to.
+
+    DC derives a wall pack over every exterior door and one storefront sign
+    from the real openings, and puts them in ``<name>.lights.json`` already
+    stood proud of the wall face (``_WALL_PACK_OUT``, ``_SIGN_OUT``). Taking
+    those positions as given is deliberate: it means the conduit needs no face
+    math of its own, and no second chance to get a normal backwards.
+
+    Interior kinds (``fluorescent``, ``window``) are not conduit targets --
+    nothing runs up an outside wall to a ceiling strip light.
+    """
+    if not light_manifest:
+        return ()
+    out = []
+    for a in light_manifest.get("anchors", []) or []:
+        if a.get("type") not in kinds:
+            continue
+        pos = a.get("pos")
+        if not pos or len(pos) < 3:
+            continue
+        out.append((blender_to_canonical(pos, up_axis), str(a.get("id", ""))))
+    return tuple(out)
+
+
 def generate(scene: Scene, opts: AnchorOptions, seed: int,
              up_axis: int = 2) -> list[Anchor]:
     """Compute placement anchors from the classified, baked scene.
@@ -202,6 +265,74 @@ def generate(scene: Scene, opts: AnchorOptions, seed: int,
     return out
 
 
+def _nearest_segment(segs, p):
+    """The wall segment a point sits on, or None if it sits on none of them.
+
+    Nearest by distance to the wall PLANE, among segments whose run actually
+    covers the point (with a module of slack, since DC stands a fixture proud
+    of the face and a door can sit at a segment's end). Returning None rather
+    than a best guess matters: a fixture on a wall Patina never classified as
+    exterior should drop out, not acquire an invented normal.
+    """
+    best, best_d = None, None
+    for s in segs:
+        along = p[s["along"]]
+        if not (s["a_min"] - 2.0 <= along <= s["a_max"] + 2.0):
+            continue
+        d = abs(p[s["axis"]] - s["fixed"])
+        if best_d is None or d < best_d:
+            best, best_d = s, d
+    return best if best_d is not None and best_d <= 2.0 else None
+
+
+def _conduit_anchors(segs, opts: AnchorOptions, seed: int) -> list[Anchor]:
+    """One conduit per REAL exterior fixture, sized to the run it makes.
+
+    RETRACTED RULE, kept because its output looked plausible: conduit used to
+    be placed at ``z_lo + 0.75 * (z_hi - z_lo)`` along each wall, on
+    ``light_spacing`` centres. On a shell whose segments span basement to
+    parapet that evaluates to 5.67 m -- a third-storey height -- and it
+    referred to no light whatsoever. It was decorative fiction that happened to
+    land on a wall.
+
+    DC already derives every exterior wall pack and the storefront sign from
+    the actual door openings and ships them in ``<name>.lights.json``. A
+    conduit is the run that FEEDS one, so there is exactly one per fixture and
+    it ends where the fixture is.
+
+    Two fields carry more than they used to, both deliberately:
+
+    * ``size`` is the RUN LENGTH from the ground plane up to the fixture, not a
+      footprint hint. A conduit's useful dimension is how far it runs, and the
+      old value was a constant 0.3 that nothing downstream could have depended
+      on.
+    * ``tag`` is the DC anchor id, so a conduit in the world is traceable back
+      to the light it was drawn for instead of the generic ``exterior_wall``.
+
+    With no light manifest this emits nothing and says so through the count --
+    a wall with no fixtures needs no conduit, and inventing one is what the old
+    rule did.
+    """
+    out: list[Anchor] = []
+    ground = opts.ground_z
+    for pos, aid in opts.conduit_targets:
+        seg = _nearest_segment(segs, pos)
+        if seg is None:
+            continue
+        n3 = [0.0, 0.0, 0.0]
+        n3[seg["axis"]] = float(seg["normal"][seg["axis"]])
+        base = seg["z_lo"] if ground is None else ground
+        run = max(0.0, float(pos[2]) - base)
+        out.append(Anchor(
+            kind="exterior_light",
+            pos=(round(float(pos[0]), 3), round(float(pos[1]), 3),
+                 round(float(pos[2]), 3)),
+            normal=(round(n3[0], 3), round(n3[1], 3), round(n3[2], 3)),
+            size=round(run, 3),
+            tag=aid or "exterior_wall"))
+    return out
+
+
 def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
     """Compute placement anchors assuming a Z-up scene (canonical frame)."""
     lo, hi = _visual_aabb(scene)
@@ -224,6 +355,12 @@ def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
     for seg in segs:
         n3 = np.array([0.0, 0.0, 0.0])
         n3[seg["axis"]] = seg["normal"][seg["axis"]]
+        # A wall segment is bucketed by wall PLANE, so every storey of one
+        # facade collapses into a single row: z_lo is the bottom of the
+        # FOUNDATION and z_hi the top of the parapet. That is fine for a
+        # roofline -- a parapet cap belongs at the top of the building -- and
+        # wrong for everything that belongs where a player stands.
+        ground = seg["z_lo"] if opts.ground_z is None else opts.ground_z
         if "roofline" in opts.kinds:
             emit("roofline", seg,
                  _points_along(seg["a_min"], seg["a_max"], opts.roofline_spacing),
@@ -231,16 +368,14 @@ def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
         if "wall_base" in opts.kinds:
             emit("wall_base", seg,
                  _points_along(seg["a_min"], seg["a_max"], opts.wall_base_spacing),
-                 seg["z_lo"], tuple(n3), 0.8, opts.wall_base_spacing * 0.3)
-        if "exterior_light" in opts.kinds:
-            zmid = seg["z_lo"] + 0.75 * (seg["z_hi"] - seg["z_lo"])
-            emit("exterior_light", seg,
-                 _points_along(seg["a_min"], seg["a_max"], opts.light_spacing),
-                 zmid, tuple(n3), 0.3, 0.0)
+                 ground, tuple(n3), 0.8, opts.wall_base_spacing * 0.3)
         if "ground_edge" in opts.kinds:
             emit("ground_edge", seg,
                  _points_along(seg["a_min"], seg["a_max"], opts.ground_spacing),
-                 seg["z_lo"], (0.0, 0.0, 1.0), 0.4, opts.ground_spacing * 0.2)
+                 ground, (0.0, 0.0, 1.0), 0.4, opts.ground_spacing * 0.2)
+
+    if "exterior_light" in opts.kinds:
+        out.extend(_conduit_anchors(segs, opts, seed))
 
     # Budget clamp per kind (deterministic: keep the first N in emission order).
     clamped: list[Anchor] = []

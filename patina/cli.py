@@ -345,11 +345,31 @@ def run(args: argparse.Namespace) -> dict:
     anchor_counts: dict = {}
     if args.anchors:
         import json
+        # v0.19: the two reference planes the anchor pass could not derive from
+        # geometry alone. Both come off manifests DC already ships next to the
+        # shell; without them the ground families measure from the bottom of
+        # the foundation and the conduit from a fraction of the total height.
+        ground_z = None
+        conduits: tuple = ()
+        if slot_manifest is not None:
+            ground_z = slot_manifest.storey_base(0)
+            if ground_z is None:
+                print("[patina] no story-0 slots: ground dressing falls back "
+                      "to the wall's lowest point", file=sys.stderr)
+            conduits = anchors.conduit_targets(scene.lights, up_axis)
+            if not conduits and "exterior_light" in (
+                    args.anchor_kinds or anchors.ANCHOR_KINDS):
+                print("[patina] no <name>.lights.json beside this shell: no "
+                      "conduit runs emitted (they run TO a fixture)",
+                      file=sys.stderr)
         aopts = anchors.AnchorOptions(
             kinds=tuple(args.anchor_kinds) if args.anchor_kinds
-            else anchors.ANCHOR_KINDS)
+            else anchors.ANCHOR_KINDS,
+            ground_z=ground_z, conduit_targets=conduits)
         anchor_list = anchors.generate(scene, aopts, args.seed, up_axis)
         anchor_counts = anchors.kind_counts(anchor_list)
+        result["anchor_ground_plane"] = (
+            "story_0" if ground_z is not None else "segment_min")
         # v0.9 alignment: when a DC building is in play (slots.json present, or
         # forced), emit anchors in DC's shared Blender Z-up space so Lux/Zoo
         # consume them with the same transform code as DC's own manifests.

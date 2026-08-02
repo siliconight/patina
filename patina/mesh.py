@@ -171,6 +171,7 @@ class Scene:
     source_path: Optional[str] = None
     gameplay: Optional[dict] = None    # parsed <name>.gameplay.json, if present
     slots: Optional[dict] = None       # parsed <name>.slots.json (DC modular manifest), if present
+    lights: Optional[dict] = None      # parsed <name>.lights.json (DC light anchors), if present
 
     def visual_meshes(self) -> list[Mesh]:
         return [m for m in self.meshes if m.is_visual()]
