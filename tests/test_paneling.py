@@ -81,6 +81,22 @@ def test_manifest_appends_extra_orders():
     assert dm["counts"]["panel_field"] == 8
 
 
+def test_remainder_wall_grids_its_own_size_not_the_squared_one():
+    """``scale`` on a ``size_mod == "end"`` slot is a copy of ``dims``.
+
+    Composing them gave a 1.69 x 13.69 m wall out of a 1.3 x 3.7 m one: the
+    panel grid ran 1 col x 11 rows up past the roof instead of 1 x 3.
+    """
+    m = _manifest([_slot(dims=(1.3, 0.35, 3.7), translation=(-15.0, 11.0, 5.85))])
+    m.slots[0].size_mod = "end"
+    m.slots[0].scale = (1.3, 0.35, 3.7)
+    orders = paneling.panel_orders(m, _regions(), seed=1999)
+    # 1.3m / 1.2 -> 1 col; 3.7m / 1.2 -> round(3.08) = 3 rows
+    assert len(orders) == 3
+    tops = [o["pos"][2] for o in orders]
+    assert max(tops) < 7.7, tops        # inside the module, not above the roof
+
+
 def test_budget_clamp():
     m = _manifest([_slot(slot_id=f"ext_{i}") for i in range(50)])
     orders = paneling.panel_orders(m, _regions(), seed=1999, max_orders=20)

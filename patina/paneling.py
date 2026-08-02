@@ -64,9 +64,7 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
 
     orders: list[dict] = []
     for s in wall_slots(manifest):
-        w = float(s.dims[0]) * float(s.scale[0])
-        d = float(s.dims[1]) * float(s.scale[1])
-        h = float(s.dims[2]) * float(s.scale[2])
+        w, d, h = s.size()
         cols = max(1, round(w / panel))
         rows = max(1, round(h / panel))
         cell_w, cell_h = w / cols, h / rows

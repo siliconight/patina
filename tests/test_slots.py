@@ -236,3 +236,35 @@ def test_apply_slot_variation_modulates_and_assigns():
     assert varied > 0
     # colour changed by the slot's single factor (uniform since one slot)
     assert not np.allclose(before[:, :3], after[:, :3])
+
+
+# --------------------------------------------------------------------------- #
+# Slot.size -- dims and scale are one measurement
+# --------------------------------------------------------------------------- #
+
+def test_full_slot_size_is_dims():
+    s = slots.Slot(slot_id="ext_0", role="wall", current_ref="wall_delco_01",
+                   size_mod="full", dims=(2.0, 0.35, 3.7), scale=(1.0, 1.0, 1.0))
+    assert s.size() == (2.0, 0.35, 3.7)
+
+
+def test_end_slot_size_is_dims_and_scale_is_the_same_number_twice():
+    """DC writes the remainder's size into BOTH fields; they must not compose.
+
+    `deli_counter.py`: a wall remainder module is authored as a unit box and
+    "the size rides as a per-slot scale", so `scale` is a copy of `dims`.
+    Measured on two shipped manifests: every `end` slot has scale == dims and
+    every `full` slot has scale == (1,1,1); 387 slots, zero exceptions.
+    """
+    s = slots.Slot(slot_id="ext_1_end", role="wall", current_ref="wall_delco_01",
+                   size_mod="end", dims=(1.3, 0.35, 3.7), scale=(1.3, 0.35, 3.7))
+    assert s.size() == (1.3, 0.35, 3.7)
+    composed = tuple(d * c for d, c in zip(s.dims, s.scale))
+    assert composed[2] == pytest.approx(13.69)      # what the nine sites did
+    assert s.size()[2] != pytest.approx(composed[2])
+
+
+def test_size_raises_without_dims():
+    s = slots.Slot(slot_id="ext_0", role="wall", current_ref="wall_delco_01")
+    with pytest.raises(ValueError, match="fit.dims"):
+        s.size()

@@ -46,7 +46,7 @@ def _face(slot, lx: float, lz_abs: float):
     ``lx`` is along the module (metres from center), ``lz_abs`` is absolute
     world Z supplied by the caller. Same rotation math as paneling.
     """
-    d = float(slot.dims[1]) * float(slot.scale[1])
+    d = slot.size()[1]
     rad = math.radians(float(slot.rot_y))
     cos_r, sin_r = math.cos(rad), math.sin(rad)
     ly = d / 2.0
@@ -57,7 +57,7 @@ def _face(slot, lx: float, lz_abs: float):
 
 
 def _base_z(slot) -> float:
-    h = float(slot.dims[2]) * float(slot.scale[2])
+    h = slot.size()[2]
     tz = float(slot.translation[2])
     return tz if slot.pivot == "base" else tz - h / 2.0
 
@@ -102,8 +102,7 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "flashing")
     orders = []
     for s in wall_slots(manifest):
-        w = float(s.dims[0]) * float(s.scale[0])
-        h = float(s.dims[2]) * float(s.scale[2])
+        w, _d, h = s.size()
         pos, n = _face(s, 0.0, _base_z(s) + h - drop)
         rng = rng_for(seed, "gutter", s.slot_id)
         orders.append({
@@ -126,8 +125,7 @@ def pilaster_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "pilaster")
     orders = []
     for s in wall_slots(manifest):
-        w = float(s.dims[0]) * float(s.scale[0])
-        h = float(s.dims[2]) * float(s.scale[2])
+        w, _d, h = s.size()
         pos, n = _face(s, -w / 2.0, _base_z(s) + h / 2.0)
         rng = rng_for(seed, "pilaster", s.slot_id)
         orders.append({

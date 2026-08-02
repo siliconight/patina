@@ -84,3 +84,48 @@ def test_deterministic():
     m = _manifest([_slot()])
     assert framing.gutter_orders(m, _regions(), seed=1999) == \
         framing.gutter_orders(m, _regions(), seed=1999)
+
+
+# --------------------------------------------------------------------------- #
+# Remainder walls: dims and scale are ONE measurement, not two factors
+# --------------------------------------------------------------------------- #
+
+def _remainder():
+    """A real ``size_mod == "end"`` slot, copied off a shipped manifest.
+
+    DC authors a wall remainder as a UNIT box and rides the real size on the
+    per-slot scale, so ``scale`` is a COPY of ``dims`` -- 29 of 319 slots in
+    ``category5_baie_dore_001`` look exactly like this. Storey height 3.7 m.
+    """
+    return Slot(slot_id="ext_1_N_end", role="wall", current_ref="wall_greybox_01",
+                facing="N", size_mod="end", translation=(-15.0, 11.0, 5.85),
+                dims=(1.3, 0.35, 3.7), scale=(1.3, 0.35, 3.7))
+
+
+def test_a_remainder_wall_is_its_dims_not_dims_times_scale():
+    """The regression: cover geometry three storeys above the building.
+
+    ``dims[2] * scale[2]`` is ``3.7 * 3.7 == 13.69``, which put the measured
+    ``Cover_gutter_run`` at 12.61 on a building whose roof is at 7.4. The slot
+    is 3.7 m tall; the gutter belongs just under ITS top.
+    """
+    assert _remainder().size() == (1.3, 0.35, 3.7)
+    o = framing.gutter_orders(_manifest([_remainder()]), _regions(), seed=1999)[0]
+    # base = 5.85 - 3.7/2 = 4.0; top = 7.7; gutter = 7.7 - 0.08
+    assert o["pos"][2] == pytest.approx(7.62)
+    assert o["pos"][2] != pytest.approx(12.62)   # the squared answer
+    assert o["size"] == pytest.approx(1.3)
+
+
+def test_a_remainder_pilaster_is_module_tall_not_storey_squared():
+    o = framing.pilaster_orders(_manifest([_remainder()]), _regions(),
+                                seed=1999)[0]
+    assert o["size2"] == [0.24, 3.7]
+    assert o["pos"][2] == pytest.approx(4.0 + 3.7 / 2.0)
+
+
+def test_a_slot_with_no_dims_raises_rather_than_placing_at_the_origin():
+    """A missing manifest field must not read as a placement bug."""
+    with pytest.raises(ValueError, match="fit.dims"):
+        Slot(slot_id="ext_0", role="wall", current_ref="wall_greybox_01",
+             dims=None).size()

@@ -89,6 +89,36 @@ class Slot:
     collision: str = "convex"
     openings: list = field(default_factory=list)
 
+    def size(self) -> tuple:
+        """The slot's real-world ``(w, d, h)`` in metres.
+
+        **``dims`` and ``scale`` are two encodings of one measurement, not two
+        factors to compose.** DC authors a wall REMAINDER (``size_mod ==
+        "end"``) as a UNIT box and rides the real size on the per-slot scale, so
+        one module fills every remainder; exact-fit slots (``size_mod ==
+        "full"``) keep ``scale == 1`` so themed art is never stretched
+        (`deli_counter.py`, "Greybox wall REMAINDERS ... the size rides as a
+        per-slot scale"). Either way ``fit.dims`` is the metric box: on an
+        ``end`` slot ``scale`` is a COPY of ``dims``; on a ``full`` slot it is
+        ``(1, 1, 1)``. Measured across two independent buildings -- 387 slots,
+        68 + 319 -- with zero exceptions.
+
+        Multiplying the two therefore SQUARES every remainder wall. That is
+        what put a ``Cover_gutter_run`` at z 12.61 on a 3.7 m storey:
+        ``dims[2] * scale[2] == 3.7 * 3.7 == 13.69``, against a measured
+        prediction of 12.62. Nine call sites in ``framing.py`` and
+        ``paneling.py`` did it; they all come here now.
+
+        Raises on a slot with no ``fit.dims``. A zero or ``(1,1,1)`` fallback
+        would place cover geometry at the module origin and look like a
+        placement bug rather than a missing manifest field -- callers filter on
+        ``s.dims`` before asking (see :func:`paneling.wall_slots`).
+        """
+        if not self.dims:
+            raise ValueError(
+                "slot %r has no fit.dims; its size is unknown" % self.slot_id)
+        return (float(self.dims[0]), float(self.dims[1]), float(self.dims[2]))
+
     def patina_role(self) -> str:
         return _ROLE_MAP.get(self.role, "wall")
 
