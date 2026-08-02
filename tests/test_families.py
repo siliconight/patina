@@ -147,3 +147,25 @@ def test_cli_extract_family(shell, tmp_path, photo):
     res, _ = _run(shell, tmp_path, ["--extract-family", f"{photo}:5"])
     assert res["family"].startswith("extracted_")
     assert len(res["family_colors"]) == 5
+
+
+# --------------------------------------------------------------------------- #
+# --extract-family IMAGE[:K] -- the drive-letter colon
+# --------------------------------------------------------------------------- #
+# `partition(":")` split on the FIRST colon, so on Windows the drive letter
+# became the image path and the rest became the count. Posix has no drive
+# letter, so the whole suite was green on Linux and red on the machine that
+# actually runs the tool.
+
+@pytest.mark.parametrize("spec,img,k", [
+    ("ref.jpg", "ref.jpg", 8),
+    ("ref.jpg:5", "ref.jpg", 5),
+    ("/tmp/pytest-of-x/ref.jpg:5", "/tmp/pytest-of-x/ref.jpg", 5),
+    (r"C:\Users\Brannen\AppData\Local\Temp\ref.jpg",
+     r"C:\Users\Brannen\AppData\Local\Temp\ref.jpg", 8),
+    (r"C:\Users\Brannen\AppData\Local\Temp\ref.jpg:5",
+     r"C:\Users\Brannen\AppData\Local\Temp\ref.jpg", 5),
+    (r"\\share\art\ref.jpg:12", r"\\share\art\ref.jpg", 12),
+])
+def test_split_extract_family(spec, img, k):
+    assert cli._split_extract_family(spec) == (img, k)

@@ -58,6 +58,28 @@ def _default_out(in_path: str) -> str:
     return base + ".patina.glb"
 
 
+#: Palette size when ``--extract-family`` names an image and no count.
+_EXTRACT_FAMILY_K = 8
+
+
+def _split_extract_family(spec: str) -> tuple[str, int]:
+    """``IMAGE[:K]`` -> ``(image_path, k)``.
+
+    Splits on the LAST colon, and only when what follows it is a count. A
+    Windows path carries a drive-letter colon, so partitioning on the FIRST one
+    read ``C:\\tmp\\ref.jpg:5`` as image ``C`` and count ``\\tmp\\ref.jpg:5``;
+    ``int()`` then raised and took the whole run with it. Posix paths have no
+    drive letter, which is why this only ever failed on Windows.
+
+    The colon that matters is the last one, and only if it introduces digits --
+    ``C:\\tmp\\ref.jpg`` has a colon and no count.
+    """
+    head, sep, tail = spec.rpartition(":")
+    if sep and tail.isdigit():
+        return head, int(tail)
+    return spec, _EXTRACT_FAMILY_K
+
+
 def run(args: argparse.Namespace) -> dict:
     """Execute the pass. Returns a dict of output paths + stats."""
     scene: Scene = gltf_io.load_glb(args.input)
@@ -152,8 +174,8 @@ def run(args: argparse.Namespace) -> dict:
     # --extract-family. None -> no lock pass, byte-identical to v0.4.
     family = None
     if args.extract_family:
-        img, _, kstr = args.extract_family.partition(":")
-        family = families.extract(img, int(kstr) if kstr else 8, seed=args.seed)
+        img, k = _split_extract_family(args.extract_family)
+        family = families.extract(img, k, seed=args.seed)
     elif args.family:
         family = families.load(args.family)
     elif skin is not None:
