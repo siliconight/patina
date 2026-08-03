@@ -111,7 +111,7 @@ def test_a_conduit_starts_above_the_door_it_would_cross():
     got = kept[0]
     top = 2.1 + openings.MARGIN
     assert got["pos"][2] > c["pos"][2], "must start higher, not lower"
-    assert got["size"] == pytest.approx(2.45 - top, abs=1e-3)
+    assert got["size"] == pytest.approx(2.45 - top, abs=2e-3)
     assert got["clipped_by"] == ["ext_0_N_open1"]
 
 

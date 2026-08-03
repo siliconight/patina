@@ -49,19 +49,91 @@ TRAVERSABLE = ("door", "garage", "window", "breach")
 #: inferred so that adding a second is a visible decision.
 EXEMPT = ("frame",)
 
-#: Metres the opening box is grown by before testing. Absorbs the cross-axis
-#: thickness the manifest does not declare (see the module docstring) plus the
-#: gap a player should see around a hole.
-MARGIN = 0.15
+#: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
+#: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base
+#: course sits lives in Zoo's table and never reaches this manifest, so a box
+#: built from the span alone is a lower bound. Measured on the shipped build:
+#: 3 base courses reached up to 0.32 m into openings the declared-span test
+#: called clean, because a base course is 0.35 across and the test assumed 0.
+#:
+#: A blanket margin was tried first and is the wrong lever: sized to cover the
+#: widest cover it dropped 11 gutters and all 4 conduits, none of which were
+#: ever near a hole. Per-cover is precise -- a gutter is judged at 0.14 and a
+#: base course at 0.35.
+#:
+#: These numbers are another repo's constants, which is a thing that rots. The
+#: real fix is Zoo publishing its cover dimensions as a contract, the way DC
+#: publishes slots; until then the value and its source are named together so
+#: drift is findable.
+_ZOO_CROSS = {                        # zoo_keeper/core/dressing.py _COVER
+    "edge_strip": 0.10, "base_course": 0.35, "curb": 0.12,
+    "conduit_run": 0.05, "panel_field": 1.20, "gutter_run": 0.14,
+    "pilaster": 0.24, "frame": 0.12,
+}
+
+#: Zoo does not use `size` as the span. It SCALES it:
+#: ``span = max(0.2, _COVER[cover]["span"] * max(size, 0.1) / 0.6)``.
+#: A curb declaring ``size: 0.4`` is built 1.33 m long; a base course
+#: declaring 0.8 is built 2.67 m. Testing the declared 0.4 understated the
+#: real footprint by 3.3x, which is why base courses kept reaching into
+#: doorways after the cross-axis was accounted for.
+#:
+#: `gutter_run` is the exception -- it spans its wall module exactly -- and
+#: `panel_field`, `pilaster` and `frame` carry `size2` and are not scaled.
+#: Same mirror, same rot risk, same real fix as _ZOO_CROSS: this belongs in a
+#: contract Zoo publishes, not in a constant Patina copies.
+#: `conduit_run` is DELIBERATELY absent: its span scaling was removed when
+#: `size` became the true ground-to-fixture run length. Mirroring the old 1.6
+#: put it straight back and left 3 conduits intersecting -- a mirror of a
+#: constant that has since changed is worse than no mirror, and this one went
+#: stale within the same day it was written. Exactly the argument for a
+#: published contract.
+_ZOO_SPAN = {                         # zoo_keeper/core/dressing.py _COVER
+    "edge_strip": 2.0, "base_course": 2.0, "curb": 2.0,
+}
+
+#: Clearance only, now that the cross-axis is accounted for properly: the gap a
+#: player should see around a hole, not a stand-in for an unknown dimension.
+MARGIN = 0.08
+
+#: Nav agent radius, from Lot's walk-scene NavigationMesh (`agent_radius = 0.4`
+#: in `site_walk.tscn`). The body that has to fit through the hole.
+_AGENT_RADIUS = 0.40
+#: Deepest any cover stands proud of its wall -- `gutter_run` in Zoo's _COVER.
+_PROUDEST_COVER = 0.10
+
+
+def lane_reach(wall_depth: float) -> float:
+    """How far the keep-out extends along an opening's normal, each side.
+
+    DERIVED, from the three things that have to fit rather than a number that
+    looked about right: half the wall's own thickness (so nothing sits in the
+    reveal), the deepest a cover stands proud of that wall, and one nav agent
+    radius so a body can pass without clipping. On a 0.35 m wall that is
+    0.175 + 0.10 + 0.40 = 0.675 m.
+
+    THIS is the "walk or shoot through" rule. An opening is not a plane, it is
+    a LANE: the volume swept by walking through a door or firing through a
+    window. Testing the plane alone let a curb sit in a doorway threshold and a
+    panel field sit in a window's firing line while the rule reported clean.
+    """
+    return round(float(wall_depth) / 2.0 + _PROUDEST_COVER + _AGENT_RADIUS, 3)
 
 
 def keep_out_boxes(manifest, margin: float = MARGIN) -> list[dict]:
     """Axis-aligned world boxes for every traversable opening in a shell.
 
-    Reads ``fit.openings`` (width / height / sill) off each slot and places it
-    on that slot's wall plane using the slot's own ``rot_y`` and depth, so the
-    box covers the full thickness of the wall rather than a plane. Spec Blender
-    Z-up throughout -- the same space the orders are in, so nothing converts.
+    Reads ``fit.openings`` (width / height / sill) off each slot and extrudes
+    it along that slot's normal by :func:`lane_reach`, so the volume is the
+    LANE a body walks or a shot travels through, not the plane of the hole.
+    Spec Blender Z-up throughout -- the same space the orders are in, so
+    nothing converts.
+
+    NOT room interiors. Measured on `category5_baie_dore_001`, testing orders
+    against `gameplay.json` room bounds flagged 1034 of 2098 -- including 603
+    of 1315 panel fields -- because a room's bounds include the wall plane and
+    every facade cover sits on it. A rule that flags half the dressing is
+    measuring the wall, not an intrusion.
     """
     boxes: list[dict] = []
     for s in manifest.slots:
@@ -81,8 +153,9 @@ def keep_out_boxes(manifest, margin: float = MARGIN) -> list[dict]:
                 continue
             sill = float(op.get("sill", 0.0))
             hx = w / 2.0
+            reach = lane_reach(depth)
             pts = [(tx + dx * cos_r - dy * sin_r, ty + dx * sin_r + dy * cos_r)
-                   for dx in (-hx, hx) for dy in (-depth, depth)]
+                   for dx in (-hx, hx) for dy in (-reach, reach)]
             boxes.append({
                 "slot_id": s.slot_id,
                 "kind": op.get("kind", "door"),
@@ -125,12 +198,26 @@ def order_box(order) -> dict:
     DC emits), conservative otherwise.
     """
     pos = [float(v) for v in order.get("pos", (0.0, 0.0, 0.0))]
+    cover = order.get("cover", "")
     size2 = order.get("size2")
-    span = float(size2[0]) if size2 and len(size2) >= 2 \
-        else float(order.get("size", 0.0) or 0.0)
-    half_v = float(size2[1]) / 2.0 if size2 and len(size2) >= 2 else 0.0
+    declared = float(order.get("size", 0.0) or 0.0)
+    if size2 and len(size2) >= 2:
+        span = float(size2[0])
+    elif cover in _ZOO_SPAN:
+        span = max(0.2, _ZOO_SPAN[cover] * max(declared, 0.1) / 0.6)
+    else:
+        span = declared
     ux, uy, uz = _run_axis(order)
     hx, hy, hz = ux * span / 2.0, uy * span / 2.0, uz * span / 2.0
+    # The axis the span does NOT run along. A strip that runs horizontally is
+    # `cross` TALL; a conduit runs vertically, so its span already covers the
+    # height and `cross` is only its width.
+    if size2 and len(size2) >= 2:
+        half_v = float(size2[1]) / 2.0
+    elif abs(uz) > 0.5:
+        half_v = 0.0
+    else:
+        half_v = _ZOO_CROSS.get(cover, 0.0) / 2.0
     return {
         "x0": pos[0] - abs(hx), "x1": pos[0] + abs(hx),
         "y0": pos[1] - abs(hy), "y1": pos[1] + abs(hy),
