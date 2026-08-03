@@ -164,6 +164,9 @@ def dressing_orders(anchors: list, regions: list[TrimRegion], *,
             "uv_region": [round(r.u0, 4), round(r.v0, 4), round(r.u1, 4), round(r.v1, 4)],
             "pos": list(a.pos),
             "normal": list(a.normal),
+            # Which way the strip RUNS. Additive: a consumer that predates
+            # this reads normal only and behaves exactly as before.
+            "tangent": list(getattr(a, "tangent", (1.0, 0.0, 0.0))),
             "size": a.size,
             "seed_offset": int(rng.integers(0, 1_000_000)),
         })
@@ -173,15 +176,26 @@ def dressing_orders(anchors: list, regions: list[TrimRegion], *,
 def dressing_manifest(anchors: list, regions: list[TrimRegion], *, seed: int,
                       source: str, sheet_file: str, space: str,
                       building_id: str | None = None,
-                      extra_orders: list[dict] | None = None) -> dict:
+                      extra_orders: list[dict] | None = None,
+                      keep_out: list | None = None) -> dict:
     """The ``<out>.dressing.json`` payload: atlas + per-anchor build orders.
 
     ``extra_orders`` are pre-built orders appended verbatim (v0.17 panel
     fields) — they must already be in ``space``.
+
+    ``keep_out`` are opening boxes from :func:`openings.keep_out_boxes`. The
+    rule -- dressing never intersects a traversable opening -- is enforced
+    HERE, once, over the ASSEMBLED list: anchor orders and facade-kit orders
+    together. A family added later is covered without anyone remembering to
+    add a check, which is the failure mode this layer keeps rediscovering.
     """
     orders = dressing_orders(anchors, regions, seed=seed)
     if extra_orders:
         orders = orders + list(extra_orders)
+    keep_out_report = None
+    if keep_out:
+        from . import openings
+        orders, keep_out_report = openings.apply(orders, keep_out)
     kinds: dict[str, int] = {}
     for o in orders:
         kinds[o["cover"]] = kinds.get(o["cover"], 0) + 1
@@ -199,4 +213,6 @@ def dressing_manifest(anchors: list, regions: list[TrimRegion], *, seed: int,
     }
     if building_id:
         out["building_id"] = building_id
+    if keep_out_report is not None:
+        out["keep_out"] = keep_out_report
     return out

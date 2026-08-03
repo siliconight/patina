@@ -52,6 +52,14 @@ class Anchor:
     normal: tuple[float, float, float]   # unit, world space
     size: float                          # suggested footprint hint, metres
     tag: str = ""                        # optional storytelling hint (role/cluster)
+    #: Unit vector along which a strip at this anchor RUNS. A normal alone
+    #: cannot orient a strip: it fixes which way is out and leaves the yaw
+    #: free. For `roofline` and `ground_edge` the normal points straight up,
+    #: so the yaw was entirely unconstrained and every strip kept world +X as
+    #: its run direction -- on a facade running along Y that reads as 64 sticks
+    #: jutting out of the building. The wall segment knows its own direction;
+    #: this stops throwing it away.
+    tangent: tuple[float, float, float] = (1.0, 0.0, 0.0)
 
 
 @dataclass
@@ -258,10 +266,12 @@ def generate(scene: Scene, opts: AnchorOptions, seed: int,
     for a in result:
         p = _z_to_up(a.pos, up_axis)
         n = _z_to_up(a.normal, up_axis)
+        t = _z_to_up(a.tangent, up_axis)
         out.append(Anchor(kind=a.kind,
                           pos=(round(p[0], 3), round(p[1], 3), round(p[2], 3)),
                           normal=(round(n[0], 3), round(n[1], 3), round(n[2], 3)),
-                          size=a.size, tag=a.tag))
+                          size=a.size, tag=a.tag,
+                          tangent=(round(t[0], 3), round(t[1], 3), round(t[2], 3))))
     return out
 
 
@@ -323,13 +333,23 @@ def _conduit_anchors(segs, opts: AnchorOptions, seed: int) -> list[Anchor]:
         n3[seg["axis"]] = float(seg["normal"][seg["axis"]])
         base = seg["z_lo"] if ground is None else ground
         run = max(0.0, float(pos[2]) - base)
+        tan = [0.0, 0.0, 0.0]
+        tan[seg["along"]] = 1.0
+        # pos is the MIDPOINT of the run, not the fixture. Zoo builds every
+        # cover as a box CENTRED on pos, so a conduit anchored at the fixture
+        # would hang half its length above it -- with `size` now the true run
+        # length, a 2.45 m run centred at 2.45 spans -0.82..5.72, through the
+        # ground and up past the next storey. The fixture is still named in
+        # `tag`; the geometry is described where the geometry is.
+        mid_z = base + run / 2.0
         out.append(Anchor(
             kind="exterior_light",
             pos=(round(float(pos[0]), 3), round(float(pos[1]), 3),
-                 round(float(pos[2]), 3)),
+                 round(mid_z, 3)),
             normal=(round(n3[0], 3), round(n3[1], 3), round(n3[2], 3)),
             size=round(run, 3),
-            tag=aid or "exterior_wall"))
+            tag=aid or "exterior_wall",
+            tangent=tuple(tan)))
     return out
 
 
@@ -341,6 +361,8 @@ def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
 
     def emit(kind, seg, along_vals, z, normal, size, jitter_scale):
         rng = rng_for(seed, "anchors", kind, str(seg["axis"]), str(seg["fixed"]))
+        tan = [0.0, 0.0, 0.0]
+        tan[seg["along"]] = 1.0          # the direction this wall RUNS
         for i, av in enumerate(along_vals):
             j = (rng.random() - 0.5) * jitter_scale
             p = _seg_point(seg, av + j, z)
@@ -350,7 +372,8 @@ def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
                               normal=(round(float(normal[0]), 3),
                                       round(float(normal[1]), 3),
                                       round(float(normal[2]), 3)),
-                              size=size, tag="exterior_wall"))
+                              size=size, tag="exterior_wall",
+                              tangent=tuple(tan)))
 
     for seg in segs:
         n3 = np.array([0.0, 0.0, 0.0])
@@ -402,6 +425,7 @@ def to_sidecar(anchors: list[Anchor], *, seed: int, source: str,
     for a in anchors:
         by_kind.setdefault(a.kind, []).append({
             "pos": list(a.pos), "normal": list(a.normal),
+            "tangent": list(a.tangent),
             "size": a.size, "tag": a.tag,
         })
     out = {
@@ -432,10 +456,12 @@ def in_blender_space(anchors: list[Anchor]) -> list[Anchor]:
     for a in anchors:
         p = patina_to_blender(a.pos)
         n = patina_to_blender(a.normal)
+        t = patina_to_blender(a.tangent)
         out.append(Anchor(kind=a.kind,
                           pos=(round(p[0], 3), round(p[1], 3), round(p[2], 3)),
                           normal=(round(n[0], 3), round(n[1], 3), round(n[2], 3)),
-                          size=a.size, tag=a.tag))
+                          size=a.size, tag=a.tag,
+                          tangent=(round(t[0], 3), round(t[1], 3), round(t[2], 3))))
     return out
 
 

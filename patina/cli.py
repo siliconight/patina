@@ -20,7 +20,7 @@ import os
 import shutil
 import sys
 
-from . import (anchors, banding, decals, depth as depth_mod, families, framing, paneling,
+from . import (anchors, banding, decals, depth as depth_mod, families, framing, openings, paneling,
                gltf_io, manifest, nuance, overrides, palette, skins, slots,
                surfaces, templates, themes, trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
@@ -425,11 +425,20 @@ def run(args: argparse.Namespace) -> dict:
                 panels += paneling.panel_orders(
                     slot_manifest, regions, seed=args.seed,
                     panel=args.panel_size, gap=args.panel_gap)
+            # The keep-out rule needs DC's openings, which only the slot
+            # manifest carries. Without one there is nothing to protect and
+            # the filter is skipped -- said out loud below rather than
+            # silently, because "no gate ran" must never read as "gate passed".
+            keep_out = (openings.keep_out_boxes(slot_manifest)
+                        if slot_manifest is not None else None)
+            if keep_out is None:
+                print("[patina] no slots.json: opening keep-out NOT enforced",
+                      file=sys.stderr)
             dm = trim.dressing_manifest(
                 emit_list, regions, seed=args.seed,
                 source=os.path.basename(out_glb),
                 sheet_file=os.path.basename(sheet_path),
-                space=space, building_id=building_id,
+                space=space, building_id=building_id, keep_out=keep_out,
                 extra_orders=panels)
             dpath = out_glb[:-4] + ".dressing.json"
             with open(dpath, "w", encoding="utf-8") as fh:

@@ -231,7 +231,12 @@ def test_conduit_runs_from_the_ground_to_the_real_fixture():
     out = _emit_with_segments(segs, opts, seed=1999)
     assert len(out) == 1
     a = out[0]
-    assert a.pos == (-8.8, -16.15, 2.45)      # AT the fixture
+    # SUPERSEDED: pos used to be the fixture itself (…, 2.45). Zoo builds every
+    # cover as a box CENTRED on pos, so anchoring at the fixture hung half the
+    # run above it -- once `size` became the true run length, a 2.45 m conduit
+    # spanned -0.82..5.72. pos is the midpoint of the run; `tag` still names
+    # the fixture.
+    assert a.pos == (-8.8, -16.15, 1.225)     # midpoint of a 0.0 -> 2.45 run
     assert a.size == pytest.approx(2.45)      # ground 0.0 -> fixture 2.45
     assert a.tag == "ext_0_N_pack_1"
     assert a.pos[2] != pytest.approx(5.67)    # the old 0.75-of-the-building rule
@@ -253,3 +258,36 @@ def test_a_fixture_on_no_classified_wall_is_dropped_not_guessed():
     opts = anchors.AnchorOptions(ground_z=0.0, kinds=("exterior_light",),
                                  conduit_targets=far)
     assert _emit_with_segments([_seg()], opts, seed=1999) == []
+
+
+def test_anchors_carry_the_direction_their_wall_runs():
+    """A normal alone leaves a flat strip's yaw free; the segment knows it.
+
+    `roofline` and `ground_edge` both point straight up, so without this the
+    downstream strip keeps world +X on every facade. Patina has the wall's
+    direction in `seg["along"]` and used to discard it.
+    """
+    segs = [_seg(axis=0, fixed=22.0)]          # wall plane on X -> runs along Y
+    opts = anchors.AnchorOptions(ground_z=0.0, kinds=("roofline", "ground_edge"))
+    out = _emit_with_segments(segs, opts, seed=1999)
+    assert out
+    for a in out:
+        assert a.tangent == (0.0, 1.0, 0.0), (a.kind, a.tangent)
+
+
+def test_the_tangent_rides_the_same_frame_conversion_as_the_normal():
+    """Two vectors on one anchor must not end up in two different spaces."""
+    a = anchors.Anchor(kind="ground_edge", pos=(1.0, 2.0, 3.0),
+                       normal=(0.0, 0.0, 1.0), size=0.4,
+                       tangent=(0.0, 1.0, 0.0))
+    out = anchors.in_blender_space([a])[0]
+    from patina.slots import patina_to_blender
+    assert out.tangent == tuple(round(v, 3) for v in patina_to_blender((0.0, 1.0, 0.0)))
+    assert out.normal == tuple(round(v, 3) for v in patina_to_blender((0.0, 0.0, 1.0)))
+
+
+def test_sidecar_carries_the_tangent():
+    a = anchors.Anchor(kind="roofline", pos=(0, 0, 0), normal=(0, 0, 1),
+                       size=0.6, tangent=(0.0, 1.0, 0.0))
+    side = anchors.to_sidecar([a], seed=1, source="x.glb")
+    assert side["anchors"]["roofline"][0]["tangent"] == [0.0, 1.0, 0.0]
