@@ -50,13 +50,25 @@ def wall_slots(manifest: SlotManifest) -> list:
 
 def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
                  panel: float = 1.2, gap: float = 0.03,
-                 max_orders: int = 2000) -> list[dict]:
+                 max_orders: int = 4000) -> list[dict]:
     """Panel-field build orders for every exterior wall slot.
 
     ``regions`` is the trim-atlas region list (the ``panel_seam`` piece skins
     panel faces so they share the building's family). ``panel`` is the target
     panel edge in metres; each slot fits a uniform grid to its own dims, so
     cells are exact and seams align across identical modules.
+
+    CELL SIZE IS NOT THE SUBTLETY LEVER, and halving it was tried and undone.
+    A 1.2 m cell on a 3.7 m storey looks coarse, so 0.6 seems like the fix --
+    but halving a grid cell does not halve the count, it roughly TRIPLES it:
+    1374 orders become 3732 on the shipped building. Three times as many
+    elements is louder, not quieter. What a panel field shouts with is its
+    PROUD DEPTH (the shadow line in the gap) and its COVERAGE (every exterior
+    wall slot, fully gridded, on every building). Those are the levers.
+
+    ``max_orders`` was raised to 4000 anyway and the clamp made loud, because a
+    budget that silently truncates leaves a facade half-panelled and reports
+    success.
     """
     region = next((r for r in regions if r.piece == "panel_seam"), None)
     uv = [round(region.u0, 4), round(region.v0, 4),

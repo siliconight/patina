@@ -66,9 +66,9 @@ EXEMPT = ("frame",)
 #: publishes slots; until then the value and its source are named together so
 #: drift is findable.
 _ZOO_CROSS = {                        # zoo_keeper/core/dressing.py _COVER
-    "edge_strip": 0.10, "base_course": 0.35, "curb": 0.12,
+    "edge_strip": 0.10, "base_course": 0.18, "curb": 0.12,
     "conduit_run": 0.05, "panel_field": 1.20, "gutter_run": 0.14,
-    "pilaster": 0.24, "frame": 0.12,
+    "pilaster": 0.12, "frame": 0.12,
 }
 
 #: Zoo does not use `size` as the span. It SCALES it:

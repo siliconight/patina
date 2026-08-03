@@ -9,6 +9,17 @@ and leave the geometry to Zoo's ``dress_cover``:
   (``fit.openings``: width, height, sill), so each opening gets one
   ``frame`` order: a picture-frame of four thin strips Zoo builds around
   the hole. ``size2`` is the opening, not the module.
+
+  NOT REQUESTED BY THE PIPELINE, and here is why. Every Zoo module with an
+  opening already frames it -- ``doorway_*`` ships ``Doorway_Jamb_L``,
+  ``Doorway_Jamb_R`` and ``Doorway_Header``; ``window_*`` ships those plus
+  ``Window_Sill`` and ``Window_Glass``. Adding these strips put a second
+  frame around the first on all 16 openings of a shipped building, which is
+  exactly what it looks like. This pass also gives a DOORWAY a sill -- a bar
+  across a threshold you walk over -- which Zoo's doorway deliberately does
+  not have, and a ``breach`` is a hole blown through a wall that should carry
+  no frame at all. Kept for a greybox build whose modules do no framing of
+  their own; the Level Factory adapter stopped passing ``--frames``.
 * **Gutters** — one ``gutter_run`` per exterior wall slot, spanning the
   module width just under the roofline. Seams between adjacent modules
   land at module boundaries, which is where real gutter sections join.
@@ -95,12 +106,33 @@ def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,
     return orders
 
 
+def roofline_slots(manifest: SlotManifest) -> list:
+    """Exterior wall slots on the TOP storey -- the ones that have a roofline.
+
+    A gutter is a roofline object. Emitting one per exterior wall slot put a
+    run at the top of EVERY storey: measured on the shipped building, 299
+    gutters at z -0.38, 3.62 and 7.62, which is the basement ceiling, the
+    first floor line and the actual roof. Those are the pale horizontal bands
+    crossing the facade at every floor, and at 0.10 m proud a gutter is the
+    deepest cover in the kit, so they were also the loudest thing on it.
+
+    Slots with no ``story`` fall back to every wall slot -- an older manifest
+    should keep its old output rather than silently lose its gutters.
+    """
+    walls = wall_slots(manifest)
+    storeys = [int(s.story) for s in walls if s.story is not None]
+    if not storeys:
+        return walls
+    top = max(storeys)
+    return [s for s in walls if s.story is not None and int(s.story) == top]
+
+
 def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
                   drop: float = 0.08) -> list[dict]:
-    """One ``gutter_run`` per exterior wall slot, just under the roofline."""
+    """One ``gutter_run`` per top-storey exterior wall slot, under the roofline."""
     uv = _uv(regions, "flashing")
     orders = []
-    for s in wall_slots(manifest):
+    for s in roofline_slots(manifest):
         w, _d, h = s.size()
         pos, n = _face(s, 0.0, _base_z(s) + h - drop)
         rng = rng_for(seed, "gutter", s.slot_id)
@@ -119,7 +151,7 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
 
 
 def pilaster_orders(manifest: SlotManifest, regions: list, *, seed: int,
-                    width: float = 0.24) -> list[dict]:
+                    width: float = 0.12) -> list[dict]:
     """One vertical ``pilaster`` at each exterior wall slot's left edge."""
     uv = _uv(regions, "pilaster")
     orders = []
