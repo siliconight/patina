@@ -65,7 +65,9 @@ def test_pilaster_sits_at_the_left_module_seam():
     o = framing.pilaster_orders(_manifest([_slot()]), _regions(), seed=1999)[0]
     assert o["cover"] == "pilaster"
     assert o["pos"][0] == pytest.approx(-16.0)   # -15 - w/2
-    assert o["size2"] == [0.24, 4.2]
+    # was 0.24: a 24 cm column is 1/15 of a 3.7 m storey, coarse enough to
+    # read as structure rather than trim. Halved with base_course.
+    assert o["size2"] == [0.12, 4.2]
 
 
 def test_interior_and_wall_only_filters():
@@ -120,7 +122,7 @@ def test_a_remainder_wall_is_its_dims_not_dims_times_scale():
 def test_a_remainder_pilaster_is_module_tall_not_storey_squared():
     o = framing.pilaster_orders(_manifest([_remainder()]), _regions(),
                                 seed=1999)[0]
-    assert o["size2"] == [0.24, 3.7]
+    assert o["size2"] == [0.12, 3.7]      # width halved; the HEIGHT is the point
     assert o["pos"][2] == pytest.approx(4.0 + 3.7 / 2.0)
 
 
