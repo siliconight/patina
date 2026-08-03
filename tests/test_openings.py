@@ -177,3 +177,50 @@ def test_shortening_survives_millimetre_rounding():
         foot = got["pos"][2] - got["size"] / 2.0
         assert foot >= top - 1e-9, (run, foot, top)
         assert openings.violations(kept, boxes) == [], run
+
+
+# --------------------------------------------------------------------------- #
+# Windows are shoot-through surfaces
+# --------------------------------------------------------------------------- #
+# Glass breaks. A window is a firing line the moment someone shoots it, so it
+# is kept out of on exactly the same terms as a door -- not because you walk
+# through it, but because a round has to.
+
+def _window_slot(sill=1.0):
+    return _slot(slot_id="ext_0_N_win1", role="window",
+                 ops=[{"kind": "window", "width": 1.6, "height": 1.2,
+                       "sill": sill}])
+
+
+def test_a_window_is_kept_out_of_like_a_door():
+    boxes = openings.keep_out_boxes(_manifest([_window_slot()]))
+    assert len(boxes) == 1 and boxes[0]["kind"] == "window"
+    # slot base 0.0, sill 1.0, height 1.2 -> glass spans 1.0 .. 2.2
+    assert boxes[0]["z0"] < 1.0 and boxes[0]["z1"] > 2.2
+
+
+def test_dressing_across_the_glass_is_dropped():
+    boxes = openings.keep_out_boxes(_manifest([_window_slot()]))
+    across = _order("panel_field", (0.0, 10.0, 1.6), size2=[1.2, 1.2],
+                    tangent=[1.0, 0.0, 0.0])
+    kept, rep = openings.apply([across], boxes)
+    assert kept == [] and rep["dropped"]["panel_field"] == 1
+
+
+def test_the_keep_out_extends_THROUGH_the_window_not_just_across_it():
+    """A round leaves the far side. Something sitting behind the glass blocks
+    the shot exactly as much as something in front of it."""
+    boxes = openings.keep_out_boxes(_manifest([_window_slot()]))
+    depth = boxes[0]["y1"] - boxes[0]["y0"]
+    assert depth > 1.0, depth          # a lane, not a pane
+    behind = _order("pilaster", (0.0, 10.0 - 0.5, 1.6), size2=[0.24, 1.2])
+    assert openings.hits(behind, boxes), "the far side of the glass is a lane too"
+
+
+def test_a_frame_still_surrounds_a_window():
+    """The exemption must not become a licence to cover the glass: a frame's
+    strips sit outside the opening rect by construction (frame_strips), which
+    is why it can be exempt at all."""
+    boxes = openings.keep_out_boxes(_manifest([_window_slot()]))
+    f = _order("frame", (0.0, 10.0, 1.6), size2=[1.6, 1.2])
+    assert openings.hits(f, boxes) == []
