@@ -169,6 +169,76 @@ def keep_out_boxes(manifest, margin: float = MARGIN) -> list[dict]:
     return boxes
 
 
+def storey_band(manifest, story: int) -> tuple | None:
+    """(floor_z, ceiling_z) for one storey, from the wall slots on it."""
+    hs = [s.size()[2] for s in manifest.slots
+          if s.dims and s.story is not None and int(s.story) == story]
+    if not hs:
+        return None
+    base = manifest.storey_base(story)
+    return None if base is None else (base, base + max(hs))
+
+
+def _story_wall_depth(manifest, story: int, default: float = 0.35) -> float:
+    """Thickest wall on a storey. Conservative on purpose -- the inset below
+    is subtracted from the room, so a thicker wall means a SMALLER keep-out
+    and fewer false positives."""
+    ds = [s.size()[1] for s in manifest.slots
+          if s.dims and s.story is not None and int(s.story) == story]
+    return max(ds) if ds else default
+
+
+def room_boxes(manifest, gameplay, margin: float = MARGIN) -> list[dict]:
+    """Keep-out boxes for room INTERIORS -- the floor a body stands on.
+
+    WHY THIS EXISTS ON THE SECOND ATTEMPT. The first version tested orders
+    against `gameplay.json` room bounds raw and flagged 1034 of 2098 orders,
+    603 of 1315 panel fields, so it was thrown out as unworkable. It was not
+    unworkable; the test was wrong. A room's bounds run to the WALL, and every
+    facade cover sits on that wall, so the raw box flags the entire dressing
+    pass by construction. Measuring the wall is not measuring an intrusion.
+
+    Shrinking the box by the wall's own half-thickness plus the deepest a cover
+    stands proud puts the wall plane and everything mounted flat on it OUTSIDE
+    the keep-out, and leaves only what actually sticks into the room. That is
+    the difference between a pilaster on a wall -- which real buildings have --
+    and a free-standing rod in the middle of a floor you walk across, which was
+    shipping.
+
+    NO AGENT RADIUS HERE, unlike :func:`lane_reach`. A doorway has to admit a
+    body moving THROUGH it, so its lane carries the agent's width. A room's
+    walls do not: a cover is allowed to touch the wall a player can walk up to.
+    Adding the radius here would re-flag the flat covers this exists to spare.
+
+    ``gameplay`` is the parsed `<name>.gameplay.json`; rooms carry
+    ``bounds`` [minx, miny, maxx, maxy] and ``story``, in the same spec
+    Blender Z-up space as the orders, so nothing converts.
+    """
+    rooms = (gameplay or {}).get("rooms") or []
+    boxes: list[dict] = []
+    for r in rooms:
+        b = r.get("bounds")
+        if not b or len(b) < 4:
+            continue
+        story = int(r.get("story", 0) or 0)
+        band = storey_band(manifest, story)
+        if band is None:
+            continue
+        inset = _story_wall_depth(manifest, story) / 2.0 + _PROUDEST_COVER
+        x0, y0, x1, y1 = (float(b[0]) + inset, float(b[1]) + inset,
+                          float(b[2]) - inset, float(b[3]) - inset)
+        if x1 - x0 <= 0.0 or y1 - y0 <= 0.0:
+            continue          # a closet thinner than its own walls
+        boxes.append({
+            "slot_id": r.get("id", "room"),
+            "kind": "room",
+            "x0": x0 + margin, "x1": x1 - margin,
+            "y0": y0 + margin, "y1": y1 - margin,
+            "z0": band[0], "z1": band[1],
+        })
+    return boxes
+
+
 def _run_axis(order) -> tuple:
     """Unit vector the order's span runs along.
 

@@ -37,15 +37,40 @@ _MIN_PANEL = 0.25
 def wall_slots(manifest: SlotManifest) -> list:
     """Exterior wall slots eligible for paneling.
 
-    A slot qualifies with role ``wall``, known dims, and an exterior signal —
-    a ``facing`` value or an ``ext_``-prefixed slot_id (DC emits both). If no
-    wall slot carries an exterior signal (older manifests), every wall slot
-    qualifies.
+    A slot qualifies with role ``wall``, known dims, and an exterior signal.
+
+    ``facing`` IS NOT AN EXTERIOR SIGNAL, and treating it as one is why the
+    inside of every building was being panelled. DC sets ``facing`` on interior
+    partitions too -- it says which way the surface points, not whether it is
+    on the shell. Measured on ``category5_baie_dore_001``: 299 wall slots, all
+    299 with ``facing`` set, 74 of them ``int_``-prefixed. So the test
+    ``s.facing or s.slot_id.startswith("ext_")`` admitted every slot in the
+    building and excluded nothing, and a quarter of the dressed walls were
+    partitions -- which is where the pilasters standing in walkable floor space
+    came from. Non-collision geometry you walk straight through, on a wall
+    nobody outside can see.
+
+    The prefix is the signal. ``int_`` is out; the ``facing``-or-``ext_`` test
+    stays for what remains, so a manifest that names slots some third way keeps
+    working.
+
+    THE LEGACY FALLBACK IS NARROWER THAN IT LOOKS. "Nothing qualified, so
+    panel everything" exists for old manifests that carry no prefixes at all.
+    Left broad it also fires on a MODERN manifest whose walls are all
+    ``int_`` -- a basement-only shell -- and panels every partition in it,
+    which is the defect wearing the fallback as a disguise. So the fallback is
+    conditioned on the manifest using no prefixes, not on the filter coming up
+    empty: a prefixed manifest that qualifies nothing gets nothing, and that
+    is the correct answer rather than a degenerate one.
     """
     walls = [s for s in manifest.slots if s.role == "wall" and s.dims]
     ext = [s for s in walls
-           if s.facing or s.slot_id.startswith("ext_")]
-    return ext if ext else walls
+           if not s.slot_id.startswith("int_")
+           and (s.facing or s.slot_id.startswith("ext_"))]
+    if ext:
+        return ext
+    prefixed = any(s.slot_id.startswith(("int_", "ext_")) for s in walls)
+    return [] if prefixed else walls
 
 
 def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
