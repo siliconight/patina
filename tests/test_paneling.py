@@ -44,8 +44,11 @@ def test_panel_face_offset_and_normal():
     assert o["normal"] == [0.0, 1.0, 0.0]
     assert o["pos"][1] == pytest.approx(11.0 + 0.15, abs=1e-3)
     w, h = o["size2"]
-    assert w == pytest.approx(1.0 - 0.03, abs=1e-3)
-    assert h == pytest.approx(1.05 - 0.03, abs=1e-3)
+    # gap was 0.03: a 3 cm channel of bare wall between every pair of panels,
+    # which with Zoo's proud depth was a groove around all 1032 cells. The
+    # joint is the seam a player reads as "tiles".
+    assert w == pytest.approx(1.0 - 0.01, abs=1e-3)
+    assert h == pytest.approx(1.05 - 0.01, abs=1e-3)
     assert o["size"] == pytest.approx(w)
 
 
@@ -60,6 +63,36 @@ def test_interior_walls_skipped_when_exterior_marked():
                    _slot(slot_id="int_0_seg0", facing=None)])
     orders = paneling.panel_orders(m, _regions(), seed=1999)
     assert {o["slot_id"] for o in orders} == {"ext_0_N_seg0"}
+
+
+def test_an_interior_wall_that_carries_facing_is_still_interior():
+    """The case the filter actually meets, and used to let through.
+
+    DC sets ``facing`` on interior partitions too -- it says which way a
+    surface points, not whether it is on the shell. On a shipped building all
+    299 wall slots carried ``facing``, 74 of them ``int_``, so a test of
+    "facing or ext_ prefix" admitted the whole building. The old version of
+    the test above passes either way, because its interior slot has no
+    ``facing`` -- it was checking a case that does not occur.
+    """
+    m = _manifest([_slot(), _slot(slot_id="int_-1_4_seg1", facing="N")])
+    orders = paneling.panel_orders(m, _regions(), seed=1999)
+    assert {o["slot_id"] for o in orders} == {"ext_0_N_seg0"}
+
+
+def test_a_prefixed_manifest_with_no_exterior_walls_gets_nothing():
+    """Not the legacy fallback. A basement-only shell is modern and empty."""
+    m = _manifest([_slot(slot_id="int_-1_a", facing="N"),
+                   _slot(slot_id="int_-1_b", facing="S")])
+    assert paneling.panel_orders(m, _regions(), seed=1999) == []
+
+
+def test_a_manifest_with_no_prefixes_at_all_still_panels_everything():
+    """The legacy fallback, kept: an old manifest keeps its old output."""
+    m = _manifest([_slot(slot_id="wall_a", facing=None),
+                   _slot(slot_id="wall_b", facing=None)])
+    orders = paneling.panel_orders(m, _regions(), seed=1999)
+    assert {o["slot_id"] for o in orders} == {"wall_a", "wall_b"}
 
 
 def test_deterministic():

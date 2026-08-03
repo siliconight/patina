@@ -74,7 +74,7 @@ def wall_slots(manifest: SlotManifest) -> list:
 
 
 def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
-                 panel: float = 1.2, gap: float = 0.03,
+                 panel: float = 1.2, gap: float = 0.01,
                  max_orders: int = 4000) -> list[dict]:
     """Panel-field build orders for every exterior wall slot.
 
@@ -90,6 +90,13 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
     elements is louder, not quieter. What a panel field shouts with is its
     PROUD DEPTH (the shadow line in the gap) and its COVERAGE (every exterior
     wall slot, fully gridded, on every building). Those are the levers.
+
+    THE JOINT IS THE OTHER HALF OF THE SEAM. ``gap`` was 0.03, leaving a 3 cm
+    channel of bare wall between every pair of panels; paired with Zoo's 0.03 m
+    proud depth that is a 3x3 cm groove around all 1032 cells. Tightened to
+    0.01 here and the proud depth to 0.012 in Zoo, so the joint reads as a line
+    rather than a channel. This does NOT remove the grid -- a panel field is
+    articulation and articulation has seams -- it makes the seam quiet.
 
     ``max_orders`` was raised to 4000 anyway and the clamp made loud, because a
     budget that silently truncates leaves a facade half-panelled and reports
