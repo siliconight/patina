@@ -28,7 +28,7 @@ from __future__ import annotations
 import math
 
 from .determinism import rng_for
-from .slots import SlotManifest
+from .slots import SlotManifest, footprint_center, outward_sign
 
 # Panels smaller than this on either axis read as noise, not paneling.
 _MIN_PANEL = 0.25
@@ -107,6 +107,7 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
           round(region.u1, 4), round(region.v1, 4)] if region else None
 
     orders: list[dict] = []
+    center = footprint_center(manifest)
     for s in wall_slots(manifest):
         w, d, h = s.size()
         cols = max(1, round(w / panel))
@@ -120,9 +121,14 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
         cos_r, sin_r = math.cos(rad), math.sin(rad)
         tx, ty, tz = (float(v) for v in s.translation)
         z0 = 0.0 if s.pivot == "base" else -h / 2.0
-        # Outward face plane sits half the module depth along local +Y.
-        ly = d / 2.0
-        nx, ny = round(-sin_r, 3) + 0.0, round(cos_r, 3) + 0.0
+        # The face plane sits half the module depth along the OUTWARD side,
+        # which is local +Y or local -Y depending on where the wall stands
+        # relative to the building centre -- see slots.outward_sign. Taking
+        # +Y unconditionally put 546 of 1032 panel fields on the inside.
+        out = outward_sign(s, center)
+        ly = out * d / 2.0
+        nx = round(out * -sin_r, 3) + 0.0
+        ny = round(out * cos_r, 3) + 0.0
         for i in range(cols):
             lx = -w / 2.0 + cell_w * (i + 0.5)
             px = tx + lx * cos_r - ly * sin_r

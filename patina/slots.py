@@ -39,6 +39,7 @@ absent), so every prior release's output is unaffected.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -247,6 +248,70 @@ def patina_to_blender(p) -> tuple:
 def slot_position_patina(slot: Slot) -> tuple:
     """A slot's translation in Patina's working (baked glTF) space."""
     return blender_to_patina(slot.translation)
+
+
+# --------------------------------------------------------------------------- #
+# Which way is out
+# --------------------------------------------------------------------------- #
+# Every cover Patina emits stands PROUD of a wall, so each one needs a direction
+# that means "away from the building". Both dressing modules took local +Y for
+# it, and local +Y is not that direction:
+#
+#   * `rot_y` rotates it. Local +Y in world XY is (-sin, cos), so rot_y 90 sends
+#     it to -X and rot_y 270 to +X -- the wrong way on every east and west wall.
+#     Measured on `category5_baie_dore_001`: pilasters 77 outward / 148 inward,
+#     panel fields 486 / 546, and the inward pilasters split by facing as
+#     N 28, S 24, E 48, W 48. Every single E and W wall was flipped.
+#
+#   * `facing` cannot rescue it, because `facing` does not mean what the name
+#     suggests. DC emits slots per ROOM, so `facing` says which way the surface
+#     points into the space it bounds -- for a perimeter wall that is INTO the
+#     building. That is the residual N/S half of the same count.
+#
+# The building's own centre settles it without asking either. A wall is on the
+# shell, so of the two faces the outer one is the one further from the middle.
+
+
+def footprint_center(manifest: SlotManifest) -> tuple:
+    """The building's centre in manifest XY, as a BOUNDING-BOX midpoint.
+
+    A midpoint, not a mean, and that matters. Slots are not spread evenly --
+    one dense partitioned wing would drag a mean toward itself and start
+    calling that wing's outer wall "inward". The bbox midpoint only knows how
+    far the building reaches, which is the question being asked.
+
+    Every slot carrying dims counts, walls and plates alike: a floor slot sits
+    inside the footprint and helps bound it. An empty manifest gives the
+    origin, which keeps the old behaviour rather than dividing by zero.
+    """
+    xs = [float(s.translation[0]) for s in manifest.slots if s.dims]
+    ys = [float(s.translation[1]) for s in manifest.slots if s.dims]
+    if not xs:
+        return (0.0, 0.0)
+    return ((min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0)
+
+
+def outward_sign(slot: Slot, center) -> float:
+    """+1 if the slot's local +Y points away from ``center``, else -1.
+
+    Multiply both the face offset and the emitted normal by this and a cover
+    lands on the side of the wall a player can see.
+
+    LIMIT, stated because it is real: this is exact for a convex footprint and
+    can be wrong at the inner corner of an L, where a wall's outer face is
+    nearer the bbox midpoint than its inner one. That is a smaller and rarer
+    error than the one it replaces -- half the covers on every building --
+    and the honest fix for it is a footprint polygon, which DC does not
+    currently ship.
+
+    A slot sitting exactly on the centre line gives no answer (dot 0) and
+    keeps +1, the direction the code used before.
+    """
+    rad = math.radians(float(slot.rot_y))
+    ax, ay = -math.sin(rad), math.cos(rad)        # local +Y, in world XY
+    dx = float(slot.translation[0]) - center[0]
+    dy = float(slot.translation[1]) - center[1]
+    return -1.0 if (ax * dx + ay * dy) < 0.0 else 1.0
 
 
 def detect_up_axis(scene) -> int:

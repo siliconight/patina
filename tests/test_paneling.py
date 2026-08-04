@@ -134,3 +134,103 @@ def test_budget_clamp():
     m = _manifest([_slot(slot_id=f"ext_{i}") for i in range(50)])
     orders = paneling.panel_orders(m, _regions(), seed=1999, max_orders=20)
     assert len(orders) == 20
+
+
+# --------------------------------------------------------------------------- #
+# Which side of the wall a panel lands on
+# --------------------------------------------------------------------------- #
+# A single-slot manifest cannot catch this: its own translation IS the
+# footprint centre, so there is no "away" and the sign stays +1. Every test
+# above is that shape, which is why the whole facade could be inside-out with
+# a green suite. These build a box.
+
+def _box():
+    """Four perimeter walls of a 40 x 24 m building centred on the origin.
+
+    ``facing`` is what DC would emit for each -- and note the values are just
+    carried, never read: the outward rule works off position alone.
+    """
+    return _manifest([
+        _slot(slot_id="ext_0_N_seg0", facing="N", rot_y=0.0,
+              translation=(0.0, 12.0, 2.1)),
+        _slot(slot_id="ext_0_S_seg0", facing="S", rot_y=180.0,
+              translation=(0.0, -12.0, 2.1)),
+        _slot(slot_id="ext_0_E_seg0", facing="E", rot_y=90.0,
+              translation=(20.0, 0.0, 2.1)),
+        _slot(slot_id="ext_0_W_seg0", facing="W", rot_y=270.0,
+              translation=(-20.0, 0.0, 2.1)),
+    ])
+
+
+def _first(orders, slot_id):
+    return next(o for o in orders if o["slot_id"] == slot_id)
+
+
+def test_every_wall_of_a_box_panels_on_the_outside():
+    """The defect, at full size: 546 of 1032 panel fields faced indoors.
+
+    Local +Y is not "out" -- ``rot_y`` swings it to -X at 90 degrees and +X at
+    270, so the east and west walls of every building were panelled on their
+    room side. Non-collision geometry standing in walkable floor space, which
+    is the rule this pipeline is not allowed to break.
+    """
+    orders = paneling.panel_orders(_box(), _regions(), seed=1999)
+    n = _first(orders, "ext_0_N_seg0")
+    s = _first(orders, "ext_0_S_seg0")
+    e = _first(orders, "ext_0_E_seg0")
+    w = _first(orders, "ext_0_W_seg0")
+
+    assert n["normal"] == [0.0, 1.0, 0.0]
+    assert s["normal"] == [0.0, -1.0, 0.0]
+    assert e["normal"] == [1.0, 0.0, 0.0]      # was [-1, 0, 0]: into the room
+    assert w["normal"] == [-1.0, 0.0, 0.0]     # was [1, 0, 0]
+
+    # and the face plane moved with the normal, half a wall depth proud
+    assert n["pos"][1] == pytest.approx(12.15, abs=1e-3)
+    assert s["pos"][1] == pytest.approx(-12.15, abs=1e-3)
+    assert e["pos"][0] == pytest.approx(20.15, abs=1e-3)   # was 19.85
+    assert w["pos"][0] == pytest.approx(-20.15, abs=1e-3)  # was -19.85
+
+
+def test_a_perimeter_wall_facing_into_the_building_still_panels_outward():
+    """``facing`` is not a compass bearing on the shell.
+
+    DC emits slots per ROOM, so ``facing`` says which way a surface points into
+    the space it bounds. A wall along the building's south edge that bounds the
+    room to its north is authored facing N -- pointing INTO the building. This
+    is the residual half of the count the rotation alone does not explain:
+    28 N and 24 S pilasters inward on the shipped building.
+    """
+    m = _manifest(_box().slots + [
+        _slot(slot_id="ext_0_S_seg1", facing="N", rot_y=0.0,
+              translation=(6.0, -12.0, 2.1))])
+    o = _first(paneling.panel_orders(m, _regions(), seed=1999), "ext_0_S_seg1")
+    assert o["normal"] == [0.0, -1.0, 0.0]     # out, not where facing points
+    assert o["pos"][1] == pytest.approx(-12.15, abs=1e-3)
+
+
+def test_the_footprint_center_is_a_bbox_midpoint_not_a_mean():
+    """One densely partitioned wing must not drag the centre into itself.
+
+    With a mean, twenty slots clustered at the west end move the centre west
+    far enough that the east wall reads as the near face and panels inward --
+    the original bug back, in a shape no rotation explains.
+    """
+    from patina import slots as S
+    crowd = [_slot(slot_id=f"int_0_{i}", facing="N", translation=(-19.0, 0.0, 2.1))
+             for i in range(20)]
+    m = _manifest(_box().slots + crowd)
+    assert S.footprint_center(m) == (0.0, 0.0)
+    o = _first(paneling.panel_orders(m, _regions(), seed=1999), "ext_0_E_seg0")
+    assert o["normal"] == [1.0, 0.0, 0.0]
+
+
+def test_a_lone_slot_keeps_the_old_direction():
+    """No building to be outside of, so nothing changes and nothing breaks.
+
+    Every manifest in this file's older tests is this shape. Pinned so the
+    degenerate case stays a deliberate answer rather than an accident of
+    which way a zero dot product rounds.
+    """
+    o = paneling.panel_orders(_manifest([_slot()]), _regions(), seed=1999)[0]
+    assert o["normal"] == [0.0, 1.0, 0.0]

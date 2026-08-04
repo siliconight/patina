@@ -126,6 +126,89 @@ def test_a_remainder_pilaster_is_module_tall_not_storey_squared():
     assert o["pos"][2] == pytest.approx(4.0 + 3.7 / 2.0)
 
 
+# --------------------------------------------------------------------------- #
+# Which side of the wall a cover lands on
+# --------------------------------------------------------------------------- #
+# Same defect as paneling and the same blind spot in the tests above: a
+# one-slot manifest is its own centre, so there is no outward direction left to
+# get wrong. Measured on `category5_baie_dore_001`, 148 of 225 pilasters and 32
+# of 74 gutters stood on the inside of their walls.
+
+def _box(extra=()):
+    """Four perimeter walls of a 40 x 24 m building centred on the origin."""
+    return _manifest([
+        _slot(slot_id="ext_0_N_seg0", facing="N", rot_y=0.0,
+              translation=(0.0, 12.0, 2.1)),
+        _slot(slot_id="ext_0_S_seg0", facing="S", rot_y=180.0,
+              translation=(0.0, -12.0, 2.1)),
+        _slot(slot_id="ext_0_E_seg0", facing="E", rot_y=90.0,
+              translation=(20.0, 0.0, 2.1)),
+        _slot(slot_id="ext_0_W_seg0", facing="W", rot_y=270.0,
+              translation=(-20.0, 0.0, 2.1)),
+    ] + list(extra))
+
+
+def _by_slot(orders):
+    return {o["slot_id"]: o for o in orders}
+
+
+def test_pilasters_stand_on_the_outside_of_every_wall():
+    o = _by_slot(framing.pilaster_orders(_box(), _regions(), seed=1999))
+    assert o["ext_0_N_seg0"]["normal"] == [0.0, 1.0, 0.0]
+    assert o["ext_0_S_seg0"]["normal"] == [0.0, -1.0, 0.0]
+    assert o["ext_0_E_seg0"]["normal"] == [1.0, 0.0, 0.0]
+    assert o["ext_0_W_seg0"]["normal"] == [-1.0, 0.0, 0.0]
+    # a column proud of the east facade, not standing in the room behind it
+    assert o["ext_0_E_seg0"]["pos"][0] == pytest.approx(20.15, abs=1e-3)
+    assert o["ext_0_W_seg0"]["pos"][0] == pytest.approx(-20.15, abs=1e-3)
+
+
+def test_a_pilaster_still_picks_one_end_of_its_module():
+    """Flipping the FACE must not flip the module's own left edge.
+
+    One pilaster per slot at ``lx = -w/2`` is what stops adjacent modules
+    doubling up at a shared seam. Every slot in a wall run shares a ``rot_y``
+    and therefore a sign, so they all still choose the same end.
+    """
+    run = [_slot(slot_id=f"ext_0_E_seg{i}", facing="E", rot_y=90.0,
+                 translation=(20.0, -4.0 + 2.0 * i, 2.1)) for i in range(3)]
+    o = framing.pilaster_orders(_manifest(run), _regions(), seed=1999)
+    # lx = -w/2 = -1.0 along the module, which on a rot_y 90 wall runs along -Y
+    assert [x["pos"][1] for x in o] == pytest.approx([-5.0, -3.0, -1.0])
+    assert len({round(x["pos"][1], 3) for x in o}) == 3       # no doubles
+
+
+def test_gutters_hang_off_the_outside():
+    o = _by_slot(framing.gutter_orders(_box(), _regions(), seed=1999))
+    assert o["ext_0_E_seg0"]["pos"][0] == pytest.approx(20.15, abs=1e-3)
+    assert o["ext_0_W_seg0"]["normal"] == [-1.0, 0.0, 0.0]
+
+
+def test_an_opening_frame_goes_on_the_outward_face():
+    door = _slot(slot_id="ext_0_E_open1", role="doorway", facing="E",
+                 rot_y=90.0, translation=(20.0, 4.0, 2.1),
+                 openings=[{"kind": "door", "width": 1.0, "height": 2.1,
+                            "sill": 0.0}])
+    o = framing.frame_orders(_box([door]), _regions(), seed=1999)[0]
+    assert o["normal"] == [1.0, 0.0, 0.0]
+    assert o["pos"][0] == pytest.approx(20.15, abs=1e-3)
+
+
+def test_a_perimeter_wall_facing_into_the_building_is_dressed_outward():
+    """``facing`` points into the room a wall bounds, not out of the shell.
+
+    DC emits slots per ROOM, so a wall along the building's south edge that
+    bounds the room to its north is authored facing N -- pointing INTO the
+    building. This is the half of the inward count that rotation alone does
+    not explain: 28 N and 24 S pilasters on the shipped building.
+    """
+    inward = _slot(slot_id="ext_0_S_seg1", facing="N", rot_y=0.0,
+                   translation=(6.0, -12.0, 2.1))
+    o = _by_slot(framing.pilaster_orders(_box([inward]), _regions(), seed=1999))
+    assert o["ext_0_S_seg1"]["normal"] == [0.0, -1.0, 0.0]
+    assert o["ext_0_S_seg1"]["pos"][1] == pytest.approx(-12.15, abs=1e-3)
+
+
 def test_a_slot_with_no_dims_raises_rather_than_placing_at_the_origin():
     """A missing manifest field must not read as a placement bug."""
     with pytest.raises(ValueError, match="fit.dims"):
