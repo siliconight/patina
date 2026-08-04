@@ -182,8 +182,18 @@ def storey_band(manifest, story: int) -> tuple | None:
 def _story_wall_depth(manifest, story: int, default: float = 0.35) -> float:
     """Thickest wall on a storey. Conservative on purpose -- the inset below
     is subtracted from the room, so a thicker wall means a SMALLER keep-out
-    and fewer false positives."""
-    ds = [s.size()[1] for s in manifest.slots
+    and fewer false positives.
+
+    ``slots.wall_thickness``, NOT ``dims[1]``. Half a building's wall slots
+    carry dims already rotated into world axes, where ``dims[1]`` is the two
+    metre run; this took a maximum over every wall on the storey, so one east
+    wall was enough to report the building's walls as 2.0 m thick. The inset
+    below then pulled every room in by 1.0 m rather than 0.175, which is how
+    this check reported 0 intrusions on a building whose facade dressing was
+    measurably standing inside its rooms.
+    """
+    from .slots import wall_thickness
+    ds = [wall_thickness(s) for s in manifest.slots
           if s.dims and s.story is not None and int(s.story) == story]
     return max(ds) if ds else default
 

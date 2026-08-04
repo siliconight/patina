@@ -25,10 +25,8 @@ panel comes from ``(seed, "panel", slot_id, col, row)`` streams.
 
 from __future__ import annotations
 
-import math
-
 from .determinism import rng_for
-from .slots import SlotManifest, footprint_center, outward_sign
+from .slots import SlotManifest, footprint_center, wall_frame
 
 # Panels smaller than this on either axis read as noise, not paneling.
 _MIN_PANEL = 0.25
@@ -109,30 +107,30 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
     orders: list[dict] = []
     center = footprint_center(manifest)
     for s in wall_slots(manifest):
-        w, d, h = s.size()
-        cols = max(1, round(w / panel))
+        _w, _d, h = s.size()
+        # RUN and THICKNESS, not dims[0] and dims[1]. Half the wall slots in a
+        # building carry dims already rotated into world axes, so reading them
+        # positionally gridded every east and west facade across its 35 cm
+        # thickness instead of its 2 m run. slots.wall_frame is the one place
+        # that knows -- it also returns which face is the street side, so the
+        # axis and the side are settled together.
+        run, thick, along, out = wall_frame(s, center)
+        cols = max(1, round(run / panel))
         rows = max(1, round(h / panel))
-        cell_w, cell_h = w / cols, h / rows
+        cell_w, cell_h = run / cols, h / rows
         face_w = round(cell_w - gap, 3)
         face_h = round(cell_h - gap, 3)
         if face_w < _MIN_PANEL or face_h < _MIN_PANEL:
             continue
-        rad = math.radians(float(s.rot_y))
-        cos_r, sin_r = math.cos(rad), math.sin(rad)
         tx, ty, tz = (float(v) for v in s.translation)
         z0 = 0.0 if s.pivot == "base" else -h / 2.0
-        # The face plane sits half the module depth along the OUTWARD side,
-        # which is local +Y or local -Y depending on where the wall stands
-        # relative to the building centre -- see slots.outward_sign. Taking
-        # +Y unconditionally put 546 of 1032 panel fields on the inside.
-        out = outward_sign(s, center)
-        ly = out * d / 2.0
-        nx = round(out * -sin_r, 3) + 0.0
-        ny = round(out * cos_r, 3) + 0.0
+        ly = thick / 2.0
+        nx = round(out[0], 3) + 0.0
+        ny = round(out[1], 3) + 0.0
         for i in range(cols):
-            lx = -w / 2.0 + cell_w * (i + 0.5)
-            px = tx + lx * cos_r - ly * sin_r
-            py = ty + lx * sin_r + ly * cos_r
+            lx = -run / 2.0 + cell_w * (i + 0.5)
+            px = tx + lx * along[0] + ly * out[0]
+            py = ty + lx * along[1] + ly * out[1]
             for j in range(rows):
                 pz = tz + z0 + cell_h * (j + 0.5)
                 if len(orders) >= max_orders:

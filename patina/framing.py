@@ -39,7 +39,7 @@ import math
 
 from .determinism import rng_for
 from .paneling import wall_slots
-from .slots import SlotManifest, footprint_center, outward_sign
+from .slots import SlotManifest, footprint_center, wall_frame
 
 _FRAME_ROLES = ("doorway", "window")
 
@@ -51,27 +51,35 @@ def _uv(regions: list, piece: str):
     return [round(r.u0, 4), round(r.v0, 4), round(r.u1, 4), round(r.v1, 4)]
 
 
-def _face(slot, lx: float, lz_abs: float, out: float = 1.0):
+def _face(slot, lx: float, lz_abs: float, frame=None):
     """World position + outward normal for a point on a slot's outer face.
 
-    ``lx`` is along the module (metres from center), ``lz_abs`` is absolute
-    world Z supplied by the caller. Same rotation math as paneling.
+    ``lx`` is metres along the wall from its centre, ``lz_abs`` is absolute
+    world Z supplied by the caller. ``frame`` is the slot's
+    ``(run, thickness, along, outward)`` from :func:`slots.wall_frame`; the
+    whole placement is then one line of arithmetic.
 
-    ``out`` is which of the module's two faces is the outer one, +1 or -1 from
-    :func:`slots.outward_sign`. It defaults to +1 -- the value this function
-    assumed for its whole life -- so a caller that has no manifest to derive it
-    from still gets the old answer instead of an error, but every caller here
-    passes it. WHICH FACE IS OUT IS NOT LOCAL +Y: `rot_y` swings local +Y to
-    -X at 90 degrees and +X at 270, so all 96 east and west pilasters stood on
-    the inside of their walls.
+    IT USED TO DO THE TRIGONOMETRY HERE AND GET BOTH HALVES WRONG. It read
+    ``dims[1]`` as the thickness -- on an east or west wall that is the two
+    metre RUN, so a gutter sat 1.0 m off the facade instead of 0.175 -- and it
+    took local +Y as outward, which ``rot_y`` swings to -X at 90 degrees, so
+    the same covers pointed into the building. Both are settled once, in
+    ``wall_frame``, rather than in each family that draws something.
+
+    ``frame`` defaults to None, which reproduces the old single-convention
+    answer, so a caller with no manifest to derive a centroid from still gets
+    a result rather than an error. Every caller here passes one.
     """
-    d = slot.size()[1]
-    rad = math.radians(float(slot.rot_y))
-    cos_r, sin_r = math.cos(rad), math.sin(rad)
-    ly = out * d / 2.0
-    px = float(slot.translation[0]) + lx * cos_r - ly * sin_r
-    py = float(slot.translation[1]) + lx * sin_r + ly * cos_r
-    n = [round(out * -sin_r, 3) + 0.0, round(out * cos_r, 3) + 0.0, 0.0]
+    if frame is None:
+        rad = math.radians(float(slot.rot_y))
+        frame = (slot.size()[0], slot.size()[1],
+                 (math.cos(rad), math.sin(rad)),
+                 (-math.sin(rad), math.cos(rad)))
+    _run, thick, along, out = frame
+    ly = thick / 2.0
+    px = float(slot.translation[0]) + lx * along[0] + ly * out[0]
+    py = float(slot.translation[1]) + lx * along[1] + ly * out[1]
+    n = [round(out[0], 3) + 0.0, round(out[1], 3) + 0.0, 0.0]
     return [round(px, 3), round(py, 3), round(lz_abs, 3)], n
 
 
@@ -89,7 +97,7 @@ def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,
     for s in manifest.slots:
         if s.role not in _FRAME_ROLES or not s.dims:
             continue
-        out = outward_sign(s, center)
+        frame = wall_frame(s, center)
         base_z = _base_z(s)
         for k, op in enumerate(s.openings):
             ow = float(op.get("width", 0.0))
@@ -97,7 +105,7 @@ def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,
             if ow <= 0.0 or oh <= 0.0:
                 continue
             sill = float(op.get("sill", 0.0))
-            pos, n = _face(s, 0.0, base_z + sill + oh / 2.0, out)
+            pos, n = _face(s, 0.0, base_z + sill + oh / 2.0, frame)
             rng = rng_for(seed, "frame", s.slot_id, str(k))
             orders.append({
                 "anchor_kind": "opening_frame",
@@ -144,8 +152,12 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
     orders = []
     center = footprint_center(manifest)
     for s in roofline_slots(manifest):
-        w, _d, h = s.size()
-        pos, n = _face(s, 0.0, _base_z(s) + h - drop, outward_sign(s, center))
+        _w, _d, h = s.size()
+        # `run`, not dims[0]. A west wall's dims[0] is its 35 cm THICKNESS, so
+        # the gutter shipped as a 35 cm stub every 2 m -- dashes along the
+        # roofline -- and 1.0 m clear of the wall it belongs to.
+        run, _thick, _along, _out = frame = wall_frame(s, center)
+        pos, n = _face(s, 0.0, _base_z(s) + h - drop, frame)
         rng = rng_for(seed, "gutter", s.slot_id)
         orders.append({
             "anchor_kind": "roof_gutter",
@@ -155,7 +167,7 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
             "uv_region": uv,
             "slot_id": s.slot_id,
             "pos": pos, "normal": n,
-            "size": round(w, 3),
+            "size": round(run, 3),
             "seed_offset": int(rng.integers(0, 1_000_000)),
         })
     return orders
@@ -168,13 +180,13 @@ def pilaster_orders(manifest: SlotManifest, regions: list, *, seed: int,
     orders = []
     center = footprint_center(manifest)
     for s in wall_slots(manifest):
-        w, _d, h = s.size()
-        # ``lx`` stays -w/2 whatever the outward side turns out to be. Flipping
-        # the face does not flip the module's own left edge, and every slot in
-        # one wall run shares a rot_y and therefore a sign, so they all still
-        # pick the same end and adjacent modules still avoid doubling up.
-        pos, n = _face(s, -w / 2.0, _base_z(s) + h / 2.0,
-                       outward_sign(s, center))
+        _w, _d, h = s.size()
+        run, _thick, _along, _out = frame = wall_frame(s, center)
+        # ``lx`` stays -run/2 whatever the outward side turns out to be.
+        # Flipping the face does not flip the wall's own left end, and every
+        # slot in one run shares a frame, so they all still pick the same end
+        # and adjacent modules still avoid doubling up at the seam.
+        pos, n = _face(s, -run / 2.0, _base_z(s) + h / 2.0, frame)
         rng = rng_for(seed, "pilaster", s.slot_id)
         orders.append({
             "anchor_kind": "wall_pilaster",

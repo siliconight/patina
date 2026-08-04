@@ -314,6 +314,85 @@ def outward_sign(slot: Slot, center) -> float:
     return -1.0 if (ax * dx + ay * dy) < 0.0 else 1.0
 
 
+def world_oriented(slot: Slot) -> bool:
+    """Are this slot's ``fit.dims`` ALREADY rotated into world axes?
+
+    Deli Counter writes two conventions into one manifest and its own composer
+    knows it -- ``themed_tscn.write_themed_tscn``: *"each module is oriented by
+    FITTING its footprint to the greybox slot's extent instead of trusting the
+    slot's raw rot_y -- walls (world-oriented by deli) fit at 0 deg, canonical
+    openings at 90/270."* Patina was never told, and applied ``rot_y`` to
+    everything, so every east and west WALL got the rotation twice:
+
+        ext_1_N_seg0   rot   0   dims (2.00, 0.35, 3.70)   run, thickness
+        ext_1_W_seg0   rot 270   dims (0.35, 2.00, 3.70)   thickness, run
+
+    On the west wall that made the run 0.35 m and the thickness 2.0 m, which
+    shipped 35 cm gutter stubs floating 1.0 m off the facade -- ``d/2`` of a
+    two-metre "thickness". 124 of 299 wall slots in the measured building.
+
+    The discriminator is in the data, so nothing is hard-coded and no greybox
+    GLB is needed: a wall is LONG on one horizontal axis and THIN on the other,
+    and the canonical order is (run, thickness). So dims listing the thin axis
+    first can only be dims that have already been rotated.
+
+    LIMIT, stated: a slot whose run is genuinely shorter than its thickness
+    would read as world-oriented and be turned 90 degrees. That is a doorway
+    narrower than the wall is thick, or a wall stub shorter than it is deep --
+    neither is a thing the layout produces, and both would look like a defect
+    long before this rule saw them.
+    """
+    w, d, _h = slot.size()
+    return d > w
+
+
+def wall_thickness(slot: Slot) -> float:
+    """How thick the slot's wall is, under either dims convention.
+
+    ``dims[1]`` is not it. On a world-oriented east/west wall ``dims[1]`` is
+    the two-metre RUN, and anything taking a maximum over a storey's walls
+    picked that up: :func:`openings._story_wall_depth` reported the wall as
+    2.0 m thick, so :func:`openings.room_boxes` inset every room by 1.0 m
+    instead of 0.175 and could not see a cover standing in it. That is why the
+    room-intrusion count read 0 both before and after the outward fix.
+    """
+    w, d, _h = slot.size()
+    return w if d > w else d
+
+
+def wall_frame(slot: Slot, center) -> tuple:
+    """``(run, thickness, along, outward)`` for a slot, in world XY.
+
+    THE ONE PLACE that answers "which way does this slot face". ``along`` is
+    the unit vector the wall runs down, ``outward`` the unit normal of its
+    street-side face, and ``run``/``thickness`` are its real metres each way --
+    all four correct under both of Deli Counter's dims conventions (see
+    :func:`world_oriented`) and on either side of the building (see
+    :func:`outward_sign`). A cover then places with plain arithmetic:
+
+        pos = translation + lx * along + thickness / 2 * outward
+
+    Two separate mistakes used to live in the nine call sites this replaces:
+    the axis (rot_y applied to already-rotated dims) and the side (local +Y
+    taken as outward). They are independent, and both are fixed here rather
+    than in each family that draws something.
+    """
+    w, d, _h = slot.size()
+    if world_oriented(slot):
+        run, thick = d, w
+        along, out = (0.0, 1.0), (1.0, 0.0)
+    else:
+        run, thick = w, d
+        rad = math.radians(float(slot.rot_y))
+        cos_r, sin_r = math.cos(rad), math.sin(rad)
+        along, out = (cos_r, sin_r), (-sin_r, cos_r)
+    dx = float(slot.translation[0]) - center[0]
+    dy = float(slot.translation[1]) - center[1]
+    if out[0] * dx + out[1] * dy < 0.0:
+        out = (-out[0], -out[1])
+    return run, thick, along, out
+
+
 def detect_up_axis(scene) -> int:
     """Which axis index is 'up' in the baked scene (0=X, 1=Y, 2=Z).
 
