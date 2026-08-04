@@ -346,6 +346,31 @@ def world_oriented(slot: Slot) -> bool:
     return d > w
 
 
+def modal_thickness(manifest: SlotManifest, default: float = 0.35) -> float:
+    """The one thickness this building's walls are, by majority vote.
+
+    WHY A BUILDING-WIDE NUMBER RATHER THAN A PER-SLOT COMPARISON. Reading
+    "the smaller horizontal dim is the thickness" is right for a 2.00 x 0.35
+    wall and wrong for a 0.30 x 0.35 FILLER STUB, which is genuinely narrower
+    than the wall is deep. `category5_baie_dore_001` contains one --
+    `ext_0_S_seg7`, dims (0.30, 0.35, 3.70) -- so the case this rule's
+    docstring dismissed as "not a thing the layout produces" is in the very
+    building the rule was derived on. It read as pre-rotated and its dressing
+    was turned ninety degrees onto the wall's end.
+
+    A building has ONE wall thickness and the manifest states it hundreds of
+    times, so the mode is not a guess. Ties and empty manifests fall back to
+    ``default``, which is DC's standard wall.
+    """
+    from collections import Counter
+    votes = Counter()
+    for s in manifest.slots:
+        if s.role in ("wall", "doorway", "window", "breach") and s.dims:
+            w, d, _h = s.size()
+            votes[round(min(w, d), 4)] += 1
+    return votes.most_common(1)[0][0] if votes else default
+
+
 def wall_thickness(slot: Slot) -> float:
     """How thick the slot's wall is, under either dims convention.
 
@@ -360,7 +385,7 @@ def wall_thickness(slot: Slot) -> float:
     return w if d > w else d
 
 
-def wall_frame(slot: Slot, center) -> tuple:
+def wall_frame(slot: Slot, center, thickness: float = None) -> tuple:
     """``(run, thickness, along, outward)`` for a slot, in world XY.
 
     THE ONE PLACE that answers "which way does this slot face". ``along`` is
@@ -376,9 +401,32 @@ def wall_frame(slot: Slot, center) -> tuple:
     the axis (rot_y applied to already-rotated dims) and the side (local +Y
     taken as outward). They are independent, and both are fixed here rather
     than in each family that draws something.
+
+    ``thickness`` is the building's own wall thickness from
+    :func:`modal_thickness`. Pass it: without it the axis falls back to "the
+    smaller dim is the thickness", which turns a filler stub narrower than the
+    wall is deep through ninety degrees. It defaults to None so a caller with
+    one slot and no manifest still gets an answer.
     """
     w, d, _h = slot.size()
-    if world_oriented(slot):
+    if thickness is not None:
+        # THE BUILDING'S OWN THICKNESS DECIDES, not the slot's two numbers.
+        # Whichever horizontal dim IS the wall thickness is the thickness; the
+        # other is the run. This is what makes a 0.30 x 0.35 filler stub read
+        # correctly, where "the smaller one is the thickness" turns it ninety
+        # degrees. When neither dim matches -- an odd slot, a manifest with no
+        # walls -- fall through to the shape test, which is still right for
+        # every wall that is longer than it is thick.
+        tol = 1e-4
+        if abs(d - thickness) <= tol:
+            rotated = False
+        elif abs(w - thickness) <= tol:
+            rotated = True
+        else:
+            rotated = world_oriented(slot)
+    else:
+        rotated = world_oriented(slot)
+    if rotated:
         run, thick = d, w
         along, out = (0.0, 1.0), (1.0, 0.0)
     else:

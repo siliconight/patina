@@ -39,7 +39,8 @@ import math
 
 from .determinism import rng_for
 from .paneling import wall_slots
-from .slots import SlotManifest, footprint_center, wall_frame
+from .slots import (SlotManifest, footprint_center, modal_thickness,
+                    wall_frame)
 
 _FRAME_ROLES = ("doorway", "window")
 
@@ -94,10 +95,11 @@ def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "frame")
     orders = []
     center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
     for s in manifest.slots:
         if s.role not in _FRAME_ROLES or not s.dims:
             continue
-        frame = wall_frame(s, center)
+        frame = wall_frame(s, center, thick_m)
         base_z = _base_z(s)
         for k, op in enumerate(s.openings):
             ow = float(op.get("width", 0.0))
@@ -151,12 +153,13 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "flashing")
     orders = []
     center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
     for s in roofline_slots(manifest):
         _w, _d, h = s.size()
         # `run`, not dims[0]. A west wall's dims[0] is its 35 cm THICKNESS, so
         # the gutter shipped as a 35 cm stub every 2 m -- dashes along the
         # roofline -- and 1.0 m clear of the wall it belongs to.
-        run, _thick, _along, _out = frame = wall_frame(s, center)
+        run, _thick, _along, _out = frame = wall_frame(s, center, thick_m)
         pos, n = _face(s, 0.0, _base_z(s) + h - drop, frame)
         rng = rng_for(seed, "gutter", s.slot_id)
         orders.append({
@@ -179,9 +182,10 @@ def pilaster_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "pilaster")
     orders = []
     center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
     for s in wall_slots(manifest):
         _w, _d, h = s.size()
-        run, _thick, _along, _out = frame = wall_frame(s, center)
+        run, _thick, _along, _out = frame = wall_frame(s, center, thick_m)
         # ``lx`` stays -run/2 whatever the outward side turns out to be.
         # Flipping the face does not flip the wall's own left end, and every
         # slot in one run shares a frame, so they all still pick the same end

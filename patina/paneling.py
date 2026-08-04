@@ -26,7 +26,8 @@ panel comes from ``(seed, "panel", slot_id, col, row)`` streams.
 from __future__ import annotations
 
 from .determinism import rng_for
-from .slots import SlotManifest, footprint_center, wall_frame
+from .slots import (SlotManifest, footprint_center, modal_thickness,
+                    wall_frame)
 
 # Panels smaller than this on either axis read as noise, not paneling.
 _MIN_PANEL = 0.25
@@ -106,6 +107,7 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
 
     orders: list[dict] = []
     center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
     for s in wall_slots(manifest):
         _w, _d, h = s.size()
         # RUN and THICKNESS, not dims[0] and dims[1]. Half the wall slots in a
@@ -114,7 +116,7 @@ def panel_orders(manifest: SlotManifest, regions: list, *, seed: int,
         # thickness instead of its 2 m run. slots.wall_frame is the one place
         # that knows -- it also returns which face is the street side, so the
         # axis and the side are settled together.
-        run, thick, along, out = wall_frame(s, center)
+        run, thick, along, out = wall_frame(s, center, thick_m)
         cols = max(1, round(run / panel))
         rows = max(1, round(h / panel))
         cell_w, cell_h = run / cols, h / rows

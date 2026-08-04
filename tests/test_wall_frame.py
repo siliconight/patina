@@ -152,3 +152,44 @@ def test_the_room_inset_uses_the_real_thickness():
     dressing was measurably inside its rooms."""
     from patina import openings
     assert openings._story_wall_depth(BOX, 1) == pytest.approx(0.35)
+
+
+# --------------------------------------------------------------------------- #
+# The filler stub: narrower than the wall is thick
+# --------------------------------------------------------------------------- #
+
+STUB = _wall("ext_0_S_seg7", 180.0, (0.3, 0.35, 3.7), (-6.0, -16.0, 1.85),
+             story=0)
+
+
+def test_a_stub_narrower_than_the_wall_is_thick_is_not_pre_rotated():
+    """Found by sweeping 109 manifests, present in the very building the rule
+    was derived on.
+
+    `world_oriented` reads "thin axis first" as already-rotated, and a 0.30 m
+    filler stub in a 0.35 m wall genuinely IS thinner than the wall is deep.
+    It read as pre-rotated and its dressing turned ninety degrees onto the
+    wall's end. The docstring called this case impossible; it was two hundred
+    slots away.
+    """
+    m = _manifest(BOX.slots + [STUB])
+    thick = S.modal_thickness(m)
+    assert thick == 0.35
+    run, t, along, out = S.wall_frame(STUB, CENTER, thick)
+    assert (run, t) == (0.3, 0.35)             # not (0.35, 0.3)
+    assert along == pytest.approx((-1.0, 0.0))  # runs along the south wall
+    assert out == pytest.approx((0.0, -1.0))    # faces the street, not sideways
+
+
+def test_the_building_states_its_thickness_hundreds_of_times():
+    """A mode over the walls, not a per-slot comparison -- that is what makes
+    the stub decidable at all."""
+    m = _manifest(BOX.slots + [STUB])
+    assert S.modal_thickness(m) == 0.35
+    assert S.modal_thickness(_manifest([])) == 0.35     # empty -> DC's standard
+
+
+def test_without_a_thickness_the_old_shape_test_still_answers():
+    """One slot and no manifest is still a legal call."""
+    run, t, _a, _o = S.wall_frame(WEST, CENTER)
+    assert (run, t) == (2.0, 0.35)
