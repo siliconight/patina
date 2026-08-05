@@ -20,9 +20,10 @@ import os
 import shutil
 import sys
 
-from . import (anchors, banding, decals, depth as depth_mod, families, framing, openings, paneling,
-               gltf_io, manifest, nuance, overrides, palette, skins, slots,
-               surfaces, templates, themes, trim, uvproject, version)
+from . import (anchors, banding, decals, depth as depth_mod, families, framing,
+               gameplay as gp_keepout, gltf_io, manifest, nuance, openings,
+               overrides, palette, paneling, skins, slots, surfaces, templates,
+               themes, trim, uvproject, version)
 from .mesh import Scene, SurfaceRole
 
 
@@ -434,6 +435,20 @@ def run(args: argparse.Namespace) -> dict:
             if keep_out is None:
                 print("[patina] no slots.json: opening keep-out NOT enforced",
                       file=sys.stderr)
+            # v0.19: the SECOND keep-out, from the shell's own gameplay.json --
+            # objectives, cover, landmarks, spawns. Patina has always loaded
+            # this file (it is re-emitted unchanged below) and never read it,
+            # so dressing has been free to pile onto the exact positions a body
+            # occupies. Same box shape as the opening boxes, so the two
+            # concatenate and `openings.apply` enforces both at once over the
+            # assembled order list -- the property that filter was built for.
+            gp_boxes = gp_keepout.keep_out_boxes(scene.gameplay)
+            if gp_boxes:
+                keep_out = (keep_out or []) + gp_boxes
+                print(f"[patina] gameplay keep-out: {gp_keepout.counts(gp_boxes)}")
+            else:
+                print("[patina] no gameplay markers: gameplay keep-out NOT "
+                      "enforced", file=sys.stderr)
             dm = trim.dressing_manifest(
                 emit_list, regions, seed=args.seed,
                 source=os.path.basename(out_glb),
