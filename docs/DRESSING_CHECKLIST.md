@@ -513,6 +513,38 @@ This also corrects `CONTRAST_DIRECTION.md` §3.3 (Pa2), which claimed Patina
 do not exist yet." True of *site-level* lanes between buildings. Not true of
 the per-building combat data, which is right there.
 
+## Rule: a fixture must be mounted to something
+
+**A ceiling or wall fixture may not sit over a void.** Lights, vents, signs and
+cameras anchor to a SURFACE; a hole is not a surface. A fluorescent hanging in a
+stairwell opening reads as a bug on sight, and no amount of dressing quality
+survives it -- the player sees an object attached to nothing.
+
+Measured on ``art_probe_001`` seed 5017: of 20 fluorescent fixtures, **one** sits
+at ``(-10.50, 6.50, 3.20)``, inside the ``ceiling_manager_office`` void that
+spans ``x -13.0..-9.0, y 4.2..9.3`` -- the stairwell hole. Deterministic, not a
+seed artefact: the anchor row is laid across the whole ceiling and the void is
+never subtracted from it.
+
+This is a THIRD member of the family this document keeps circling, and they all
+have the same shape -- a placement pass that does not consult a volume someone
+else already declared:
+
+  * a prop in a stair column (``VAULT``, 1.6 m -- circulation.check_shell)
+  * dressing on a body's position (patina.gameplay keep-out)
+  * a fixture over a hole (this rule)
+
+WHERE IT BELONGS: Deli Counter. DC owns both halves -- it cuts the ceiling voids
+(``fit.voids`` on the ceiling slot) and it lays the light anchors
+(``lights.py``) -- so it is the only place where the two are known at the same
+time. A row that skipped void spans would never emit the anchor, and nothing
+downstream would need to know.
+
+THE GATE: the void rects are in ``slots.json`` and the placements are in the
+fixtures build, so the check is an AABB test with no new data, exactly like
+``circulation.check_shell``. It should report, not silently drop -- a fixture
+that vanishes is as confusing as one that floats.
+
 ## First moves, in order
 
 1. **Read `scene.gameplay` in the dressing pass.** No new data, no new
