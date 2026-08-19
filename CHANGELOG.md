@@ -3,6 +3,116 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.21.0] - surface_dressing has a command line, and takes its catalogue from measurements
+
+### Added
+- **`python -m patina.surface_dressing --surfaces ... --metrics ...
+  --asset-sets ... --out ...`**, so a level_factory job can invoke the planner
+  the way it invokes every other tool. `--audit` re-checks the finished
+  manifest and exits non-zero on any finding.
+- **`catalogue_from_metrics()`** builds the asset catalogue from
+  `tools/shape_metrics.py --json` output -- measured heights, measured plan
+  hull areas, real triangle counts off the built GLBs. A genome declares a
+  RANGE; the honesty rule is about the object that actually exists.
+  An asset the `asset_sets` map does not name is SKIPPED rather than guessed
+  at: the family decides which zones an asset may dress, and inventing one
+  would put litter on a gameplay path because nobody said not to.
+
+### Notes
+- The budget arguments accept the words `auto` and `none` as well as integers,
+  because an adapter passes strings and `int("auto")` is a stack trace at job
+  time rather than at configuration time. Tested.
+- The full chain now runs from a shell, which is what an adapter will do:
+
+      shape_metrics.py --dir <built glbs> --json  >  metrics.json
+      site_surfaces.py <site spec>        --out   >  surfaces.json
+      -m patina.surface_dressing --surfaces --metrics --asset-sets --out
+
+  On the real coldrun_pawn_job site: 83 zones, 6 exclusions, 3,948 instances,
+  511,712 triangles, 4 unique meshes, audit clean.
+
+## [0.20.0] - Layer 3: planning surface dressing for a whole site
+
+Patina's dressing pass has always been Layer 2 -- gutters, edge strips, curbs
+bolted onto ONE BUILDING before assembly, with no concept of a site.
+`docs/SURFACE_DRESSING.md` section 2 puts Layer 3 here too: after the
+functional shell lock, dressing the ground and the seams of the whole place.
+
+### Added
+- **`patina/surface_dressing.py`** — consumes the zones, exclusions, capsule
+  and bands that `lot/site_surfaces.py` emits plus a catalogue of built
+  assets, and produces a complete `surface-dressing/1` manifest
+  (`level_factory/schemas/surface_dressing.v1.json`).
+
+  Both gates are enforced when the plan is MADE, not when it is validated. A
+  planner that emits an illegal placement and leaves a downstream gate to
+  catch it has produced a plan that cannot ship and spent the whole pipeline
+  finding out.
+
+      honesty    in_traversed_space AND height_m > unassisted_step_max AND
+                 collision_policy == "none"  ->  refused. The number arrives
+                 in the capsule block; this module never re-derives it.
+      coverage   a zone's occluded fraction may not exceed
+                 1 - surface_visibility.
+
+  Density and visibility compose rather than compete: visibility decides the
+  ALLOWANCE (gameplay_path 0.90 -> 10% may be hidden), density decides how
+  much of that allowance is SPENT (low 0.35 ... very_high 1.0). Density can
+  therefore never breach a budget; at most it fills it.
+
+  `catalogue_entry` requires a MEASURED height and a triangle count, and
+  refuses an alpha-cutout or translucent asset that does not declare how much
+  of its footprint it actually hides. Opaque is the only case that is a fact
+  rather than a measurement.
+
+  `audit()` re-checks a finished manifest against both gates by summing the
+  orders, not by reading the planner's own running total -- a check that
+  reads the planner's arithmetic only proves the planner can add up.
+
+- **`tests/test_surface_dressing.py`** — 33 tests. Every gate is falsified by
+  constructing the case it is supposed to stop.
+
+### The cost gate, which the other two never bounded
+Run on the real `coldrun_pawn_job` site with real measured assets and no cost
+budget, the coverage rules alone authorised **361,412 placements and 46.8
+million triangles** — every one of them legal, every gate green. "How much of
+the floor may I hide" and "what may this cost" are different questions and
+only one of them was being asked.
+
+And triangles are not what binds. This layer is a handful of meshes repeated
+thousands of times, which is the case instancing exists for: as a MultiMesh,
+ten thousand pebbles are one draw call. What binds is the INSTANCE count —
+per-instance transforms, culling, and the manifest itself. So `plan()` takes
+`instance_budget` and `tri_budget`, either may bind, both are allocated per
+zone in proportion to that zone's own coverage allowance, and the cost block
+reports instances, triangles and unique meshes together. The same site now
+plans at 3,948 instances / 511,712 triangles / 4 meshes, with the audit clean.
+
+### Fixed before it shipped
+- **A per-zone candidate cap made density a function of how the site was
+  chopped up.** 73 path segment zones took up to 400 candidates each while the
+  7,973 m2 of open ground took 400 in total, so the site came out densest
+  exactly where the guide says it should be sparsest. Budgets are now shared
+  by area.
+- **`ground` and `floor` in the anchor-cause table shadowed the exposure
+  lookup**, collapsing a whole site's causes to two values. A cause that never
+  varies is not a cause; the guide's rule 3 is that unexplained scatter reads
+  as procedural noise.
+- **The cost budgets truncated the candidate list silently.** Nothing reached
+  `keep_out`, which is the exact failure the module's own docstring warns
+  about: a planner that quietly places less than it was asked for is
+  indistinguishable from one that had nothing to place. A clamp now reports
+  itself, with the numbers, whether or not the in-loop refusal fires.
+
+### Notes
+- Determinism is `determinism.rng_for(seed, "surface_dressing", zone_id)`, so
+  a zone's scatter does not move when another zone changes. With
+  `instance_budget="auto"` the COUNT still scales with total dressable area,
+  which is intended: a bigger site gets a bigger budget. The sequence is
+  stable; only where it is truncated moves.
+- This module places nothing in a scene. The level_factory job and the
+  Presentation consumer are still to come.
+
 ## [0.19.0] - 2026-08-02
 
 ### Fixed
