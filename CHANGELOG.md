@@ -3,6 +3,18 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.21.1] - the clutter asset set is tracked
+
+### Added
+- `patina/asset_sets/ground_clutter.json`: which Zoo species dresses which
+  surface family (`pebble`, `rubble_frag` -> `ground_clutter`; `weed_tuft`
+  -> `ground_cover`; `litter_scrap` -> `litter`). This is the `--asset-sets`
+  input `surface_dressing` has required since 0.21.0, and it existed only as
+  untracked scratch in the factory root's `_dress/` from 2026-08-19 (roadmap
+  110). Level Factory 0.68.0 reads the species off it for the Zoo clutter
+  build and hands it to the dressing pass, so one file decides both what the
+  layer is built from and what it is planned with.
+
 ## [0.21.0] - surface_dressing has a command line, and takes its catalogue from measurements
 
 ### Added

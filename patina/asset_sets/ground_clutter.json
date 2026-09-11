@@ -1,0 +1,10 @@
+{
+  "schema": "patina.asset_sets/1",
+  "note": "Layer 3 surface dressing: which Zoo species dresses which family of surface zone. asset_id is the Zoo species; the pipeline builds exactly these species for the clutter layer and Patina's surface_dressing catalogues them by family. Roadmap 110: this mapping lived as untracked scratch in _dress/ from 2026-08-19 until it was moved here.",
+  "asset_sets": {
+    "pebble": "ground_clutter",
+    "rubble_frag": "ground_clutter",
+    "weed_tuft": "ground_cover",
+    "litter_scrap": "litter"
+  }
+}
