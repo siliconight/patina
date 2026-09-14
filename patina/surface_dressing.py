@@ -11,8 +11,8 @@ a pebble looks like (Zoo), where the dressable regions are (Lot's
 `site_surfaces`), or whether the shell is trusted (the lock). It consumes the
 first two and refuses to run without the third being asserted.
 
-  in    the `zones`, `exclusions`, `capsule` and `bands` blocks Lot emits,
-        plus a catalogue of built assets with MEASURED heights
+  in    the `zones`, `exclusions`, `capsule`, `bands` and `tops` blocks Lot
+        emits, plus a catalogue of built assets with MEASURED heights
   out   a complete `surface-dressing/1` manifest
         (`level_factory/schemas/surface_dressing.v1.json`)
 
@@ -123,10 +123,134 @@ CODE_NO_ASSETS = "DRESS_NO_ASSETS_FOR_ZONE"
 CODE_TRI_BUDGET = "DRESS_REFUSED_TRI_BUDGET"
 CODE_INSTANCE_BUDGET = "DRESS_REFUSED_INSTANCE_BUDGET"
 CODE_UNBOUNDED = "DRESS_COST_UNBOUNDED"
+CODE_NO_SURFACE = "DRESS_REFUSED_NO_SURFACE"
+CODE_OFF_SURFACE = "DRESS_OFF_SURFACE"
+CODE_STRADDLES_STEP = "DRESS_REFUSED_STRADDLES_STEP"
+
+# WHERE A PLACEMENT STANDS. Up to 0.21 every order was written at pos z 0.0,
+# whatever was under it. Cold run 9052, read back off the shipped scene: of
+# 4,909 instances, 2,500 stood more than 5 mm below the top of the slab they
+# were on -- 1,648 inside a 0.0974 m sidewalk band, 739 in the road, 64 in a
+# path, 49 in a kerb cut. The height of a surface is Lot's to know, so Lot's
+# `site_surfaces` declares every slab it draws in a `tops` block, with the
+# rule for reading it in `tops_rule`; this module reads the top under each
+# placement's SHIPPED position (after rounding) and writes it into pos[2].
+#
+# The rule is carried as text and matched verbatim. A reader that silently
+# applied its own idea of the rule to data written under another would place
+# things confidently and wrongly; a changed rule has to change here too, on
+# purpose.
+TOPS_RULE = ("surface height at plan point (x, y) = the largest top_m of the "
+             "slabs whose rectangle holds it; with (dx, dy) from the slab's "
+             "centre, u = dx*cos(yaw) + dy*sin(yaw), v = dx*sin(yaw) - "
+             "dy*cos(yaw), held when |u| <= size[0]/2 and |v| <= size[1]/2. "
+             "A point no slab holds has no surface.")
+
+# `audit` compares an order's pos[2] with the top under it. The planner
+# writes the top itself, so anything past float noise is a manifest that was
+# not made from these tops.
+SURFACE_TOLERANCE_M = 1e-6
+
+# A PLACEMENT ACROSS A STEP HAS NO HEIGHT. With the height read at the origin,
+# cold run 9052's replan still had 26 instances whose origin lay EXACTLY on the
+# kerb line of the cross street's bands -- the cluster scatter clamps a stray
+# onto its zone's edge, and 784 of 4,948 orders sit on one. On that line the
+# band and the road both hold the point, which top wins is float noise
+# (cos(-90 deg) is 6.1e-17, not 0), and either answer buries half the piece or
+# floats half of it 9.7 cm over the road. So a placement whose footprint
+# reaches a surface more than STEP_TOLERANCE_M above or below the one at its
+# origin is refused. 5 mm is the tolerance the placement height itself was
+# measured against; it is not derived from the art, and the Zoo clutter sinks
+# its own base up to 6 mm by design.
+#
+# The footprint is the equal-area circle the exclusion test already uses,
+# sqrt(footprint_m2 / pi) at the placed scale. A rise is tested exactly --
+# distance from the origin to each higher slab's rectangle. A drop is sampled
+# at RIM_SAMPLES points on the circle, which can miss an overhang shallower
+# than the sagitta between samples: r * (1 - cos(pi / RIM_SAMPLES)), under
+# 2 mm at this layer's 0.1 m radii.
+STEP_TOLERANCE_M = 0.005
+RIM_SAMPLES = 16
 
 
 class PlanError(ValueError):
     """The plan cannot be made, and pretending otherwise would be worse."""
+
+
+def check_tops(surfaces):
+    """The `tops` block, validated. Raises PlanError on any shape this module
+    does not recognise -- a height read from a guessed schema is how every
+    placement ended up at 0."""
+    if "tops" not in surfaces:
+        raise PlanError(
+            "surfaces block has no 'tops': nothing says how high the surface "
+            "is under a placement, and writing z 0 buried 2,500 of cold run "
+            "9052's 4,909 instances. Lot's site_surfaces declares it from "
+            "0.72.0; re-run it.")
+    if surfaces.get("tops_rule") != TOPS_RULE:
+        raise PlanError(
+            f"surfaces 'tops_rule' is {surfaces.get('tops_rule')!r}; this "
+            f"planner reads tops by {TOPS_RULE!r} and will not apply it to "
+            "data declared under another rule")
+    slabs = surfaces["tops"]
+    if not isinstance(slabs, list) or not slabs:
+        raise PlanError("surfaces 'tops' is empty or not a list")
+    for s in slabs:
+        try:
+            ok = (len(s["centre"]) == 2 and len(s["size"]) == 2
+                  and all(isinstance(v, (int, float)) for v in
+                          list(s["centre"]) + list(s["size"])
+                          + [s["yaw_deg"], s["top_m"]]))
+        except (KeyError, TypeError):
+            ok = False
+        if not ok:
+            raise PlanError(f"unrecognised slab in surfaces 'tops': {s!r}")
+    return slabs
+
+
+def surface_top(point, slabs):
+    """The surface height under a plan point, by `TOPS_RULE`; None if none."""
+    x, y = float(point[0]), float(point[1])
+    best = None
+    for s in slabs:
+        r = math.radians(float(s["yaw_deg"]))
+        dx, dy = x - float(s["centre"][0]), y - float(s["centre"][1])
+        u = dx * math.cos(r) + dy * math.sin(r)
+        v = dx * math.sin(r) - dy * math.cos(r)
+        if abs(u) <= float(s["size"][0]) / 2 and abs(v) <= float(s["size"][1]) / 2:
+            top = float(s["top_m"])
+            if best is None or top > best:
+                best = top
+    return best
+
+
+def _slab_distance(point, s):
+    """Plan distance from a point to a slab's rectangle; 0 inside it."""
+    r = math.radians(float(s["yaw_deg"]))
+    dx, dy = float(point[0]) - float(s["centre"][0]), float(point[1]) - float(s["centre"][1])
+    u = abs(dx * math.cos(r) + dy * math.sin(r)) - float(s["size"][0]) / 2
+    v = abs(dx * math.sin(r) - dy * math.cos(r)) - float(s["size"][1]) / 2
+    return math.hypot(max(u, 0.0), max(v, 0.0))
+
+
+def footprint_step(point, radius_m, slabs, top):
+    """The largest rise or drop, in metres, between the surface at a
+    placement's origin (`top`) and any surface its footprint circle reaches.
+    `math.inf` when part of the footprint has no surface. See
+    STEP_TOLERANCE_M for what is exact here and what is sampled."""
+    worst = 0.0
+    for s in slabs:
+        rise = float(s["top_m"]) - top
+        if rise > worst and _slab_distance(point, s) <= radius_m:
+            worst = rise
+    x, y = float(point[0]), float(point[1])
+    for k in range(RIM_SAMPLES):
+        a = 2.0 * math.pi * k / RIM_SAMPLES
+        t = surface_top((x + radius_m * math.cos(a), y + radius_m * math.sin(a)), slabs)
+        if t is None:
+            return math.inf
+        worst = max(worst, top - t)
+    return worst
 
 
 def catalogue_entry(asset_id, asset_set, *, height_m, footprint_m2, tris,
@@ -277,6 +401,7 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
             "plan the whole site sideways.")
     if not catalogue:
         raise PlanError("no assets to place")
+    slabs = check_tops(surfaces)
 
     cap = surfaces["capsule"]
     step_max = float(cap["unassisted_step_max_m"])
@@ -424,6 +549,32 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
                     "why": "inside " + ", ".join(tags),
                 })
                 continue
+            # The height is read at the position that SHIPS, after rounding:
+            # asking the rounded and the unrounded point the same question can
+            # give two answers at a slab's edge.
+            px, py = round(x, 4), round(y, 4)
+            pz = surface_top((px, py), slabs)
+            if pz is None:
+                keep_out.append({
+                    "code": CODE_NO_SURFACE, "surface_zone_id": zid,
+                    "asset_id": c["asset_id"],
+                    "why": (f"no declared surface holds ({px}, {py}); a "
+                            "placement with nothing under it has no height "
+                            "to stand at")})
+                continue
+            step = footprint_step((px, py), radius, slabs, pz)
+            if step > STEP_TOLERANCE_M:
+                keep_out.append({
+                    "code": CODE_STRADDLES_STEP, "surface_zone_id": zid,
+                    "asset_id": c["asset_id"],
+                    "why": (f"its {radius:.3f} m footprint at ({px}, {py}) "
+                            "reaches a surface "
+                            + ("with no surface under part of it"
+                               if step == math.inf else
+                               f"{step:.4f} m off the {pz} m one at its "
+                               "origin")
+                            + f", past the {STEP_TOLERANCE_M} m tolerance")})
+                continue
             # `>=`, not `+1 >`. A zone whose share works out to 0.87 of an
             # instance would otherwise get exactly zero, and a gameplay path
             # the guide asks for at LOW density getting nothing at all is a
@@ -458,7 +609,7 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
                 "asset_id": c["asset_id"],
                 "placement_mode": "cluster",
                 "anchor_cause": cause,
-                "pos": [round(x, 4), round(y, 4), 0.0],
+                "pos": [px, py, pz],
                 "normal": [0.0, 0.0, 1.0],
                 "yaw": round(float(rng.random()) * 2.0 * math.pi, 5),
                 "scale": round(s, 4),
@@ -530,18 +681,32 @@ def coverage_by_zone(manifest):
     return out
 
 
-def audit(manifest):
+def audit(manifest, tops=None):
     """Re-check a finished manifest against both gates. Returns findings.
 
     An empty list means the plan is legal by the rules it declares, checked
     against the numbers it carries rather than against this module's memory of
     them.
+
+    `tops` is the surfaces block's slab list. The manifest has no key for it
+    (`surface-dressing/1` is closed), so the height check runs only when the
+    caller hands the slabs over -- the CLI always does.
     """
     findings = []
     step_max = float(manifest["capsule"]["unassisted_step_max_m"])
     zones = {z["surface_zone_id"]: z for z in manifest["zones"]}
 
     for o in manifest["orders"]:
+        if tops is not None:
+            top = surface_top(o["pos"], tops)
+            if top is None or abs(float(o["pos"][2]) - top) > SURFACE_TOLERANCE_M:
+                findings.append({
+                    "code": CODE_OFF_SURFACE,
+                    "surface_zone_id": o["surface_zone_id"],
+                    "message": (f"{o['asset_id']} at {o['pos']} stands at z "
+                                f"{o['pos'][2]}; the surface under it is "
+                                + ("not declared" if top is None
+                                   else f"at {top}"))})
         if (o["in_traversed_space"] and o["height_m"] > step_max
                 and o["collision_policy"] == "none"):
             findings.append({
@@ -682,7 +847,7 @@ def main(argv=None):
         f"{c['unique_meshes']} meshes over {c['dressable_area_m2']} m2 "
         f"({c['instances_per_m2']}/m2); {man['keep_out']['refused']} refused\n")
 
-    findings = audit(man)
+    findings = audit(man, tops=surf["tops"])
     for f in findings:
         sys.stderr.write(f"[dress] {f['code']}: {f['message']}\n")
     if a.audit and findings:

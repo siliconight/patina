@@ -43,9 +43,21 @@ SD_VIS = {"gameplay_path": 0.90, "play_space": 0.70,
           "environmental_edge": 0.45, "decorative": 0.0}
 
 
-def surfaces(zones, exclusions=()):
+def slab(name, centre, size, top, *, yaw=0.0, family="ground"):
+    return {"name": name, "family": family, "centre": list(centre),
+            "size": list(size), "yaw_deg": yaw, "top_m": top}
+
+
+#: Every fixture stands on a plate big enough for all of them, at z 0, unless
+#: a test says otherwise -- so the tests that are about budgets and gates are
+#: not also about height.
+PLATE = slab("Ground", (0.0, 0.0), (1000.0, 1000.0), 0.0)
+
+
+def surfaces(zones, exclusions=(), tops=(PLATE,)):
     return {"space": SD.SPACE, "capsule": capsule(), "bands": bands(),
-            "zones": list(zones), "exclusions": list(exclusions)}
+            "zones": list(zones), "exclusions": list(exclusions),
+            "tops": list(tops), "tops_rule": SD.TOPS_RULE}
 
 
 def small():
@@ -458,3 +470,157 @@ def test_cli_reports_an_empty_catalogue_instead_of_planning_nothing(tmp_path):
     rc = SD.main(["--surfaces", s, "--metrics", m, "--asset-sets", str(bad),
                   "--site-id", "t", "--source", "t.tscn"])
     assert rc == 2
+
+
+# --- where a placement stands ----------------------------------------------
+# Cold run 9052: every order at pos z 0.0, 2,500 of 4,909 instances more than
+# 5 mm inside the slab under them, 1,648 of those inside a 0.0974 m sidewalk
+# band. The height is the top of the surface Lot declares under the point.
+
+SIDEWALK_TOP = 0.0974          # lot SIDEWALK_H on 9052's contract
+PLATE_TOP = -0.002             # lot PLATE_TOP
+
+
+def test_a_placement_on_a_raised_band_stands_on_its_top():
+    band = slab("sidewalk_0L_0", (10.0, 2.0), (20.0, 4.0), SIDEWALK_TOP,
+                family="sidewalk")
+    plate = slab("Ground", (0.0, 0.0), (200.0, 200.0), PLATE_TOP)
+    surf = surfaces([zone("walk", "environmental_edge", "very_high",
+                          (0, 0, 20, 4), kind="sidewalk")], tops=(plate, band))
+    out = plan(surf)
+    assert out["orders"]
+    assert {o["pos"][2] for o in out["orders"]} == {SIDEWALK_TOP}
+
+
+def test_where_slabs_overlap_the_highest_top_is_the_surface():
+    """A zone laid half over a band: the half on the band stands on the band,
+    the rest on the plate. Checked per order against an independent
+    axis-aligned test, not against `surface_top`."""
+    band = slab("sidewalk", (5.0, 0.0), (10.0, 40.0), SIDEWALK_TOP,
+                family="sidewalk")
+    plate = slab("Ground", (0.0, 0.0), (200.0, 200.0), PLATE_TOP)
+    surf = surfaces([zone("edge", "environmental_edge", "very_high",
+                          (0, -20, 20, 20))], tops=(plate, band))
+    out = plan(surf)
+    on_band = [o for o in out["orders"] if o["pos"][0] <= 10.0]
+    off_band = [o for o in out["orders"] if o["pos"][0] > 10.0]
+    assert on_band and off_band
+    assert all(o["pos"][2] == SIDEWALK_TOP for o in on_band)
+    assert all(o["pos"][2] == PLATE_TOP for o in off_band)
+
+
+def test_a_yawed_slab_holds_points_along_its_own_axis():
+    diag = [slab("path_0", (0.0, 0.0), (10.0, 2.0), 0.012, yaw=45.0,
+                 family="path")]
+    assert SD.surface_top((3.0, 3.0), diag) == 0.012
+    assert SD.surface_top((3.0, -3.0), diag) is None
+
+
+def test_the_height_is_read_where_the_placement_ships(monkeypatch):
+    """Rounding moves a point: 5.00004 is off a slab ending at x = 5.0, and
+    the 5.0 it ships as is on it. The height has to be the shipped point's.
+    A point on a slab's edge straddles it, so the step refusal is switched
+    off here to isolate the rounding."""
+    step = slab("step", (2.5, 0.0), (5.0, 10.0), 0.1)
+    plate = slab("Ground", (0.0, 0.0), (200.0, 200.0), 0.0)
+    monkeypatch.setattr(SD, "STEP_TOLERANCE_M", 1.0)
+    monkeypatch.setattr(SD, "_clustered_points",
+                        lambda rng, aabb, n, **kw: [(5.00004, 1.0)])
+    surf = surfaces([zone("edge", "environmental_edge", "very_high",
+                          (0, -5, 10, 5))], tops=(plate, step))
+    out = plan(surf, instance_budget=None, tri_budget=None)
+    assert [o["pos"] for o in out["orders"]] == [[5.0, 1.0, 0.1]]
+
+
+def test_surfaces_without_tops_are_refused_not_planned_at_zero():
+    surf = small()
+    del surf["tops"]
+    with pytest.raises(SD.PlanError) as e:
+        plan(surf)
+    assert "tops" in str(e.value)
+
+
+def test_tops_declared_under_another_rule_are_refused():
+    surf = small()
+    surf["tops_rule"] = "the lowest top wins"
+    with pytest.raises(SD.PlanError):
+        plan(surf)
+
+
+def test_an_unrecognised_slab_is_refused():
+    surf = small()
+    surf["tops"] = [{"name": "Ground", "centre": [0, 0], "size": [100, 100],
+                     "yaw_deg": 0.0}]                     # no top_m
+    with pytest.raises(SD.PlanError):
+        plan(surf)
+
+
+def test_a_candidate_over_no_surface_is_refused_and_says_so():
+    half = slab("Ground", (5.0, 0.0), (10.0, 40.0), 0.0)
+    surf = surfaces([zone("edge", "environmental_edge", "very_high",
+                          (0, -20, 20, 20))], tops=(half,))
+    out = plan(surf)
+    assert out["orders"]
+    assert all(o["pos"][0] <= 10.0 for o in out["orders"])
+    assert SD.CODE_NO_SURFACE in {e["code"] for e in out["keep_out"]["entries"]}
+
+
+def test_audit_catches_an_order_standing_off_its_surface():
+    band = slab("sidewalk", (0.0, 0.0), (200.0, 200.0), SIDEWALK_TOP)
+    surf = surfaces([zone("walk", "environmental_edge", "very_high",
+                          (0, 0, 20, 4))], tops=(band,))
+    out = plan(surf)
+    assert SD.audit(out, tops=[band]) == []
+    out["orders"][0]["pos"][2] = 0.0                      # 0.21's answer
+    codes = [f["code"] for f in SD.audit(out, tops=[band])]
+    assert codes == [SD.CODE_OFF_SURFACE]
+
+
+def _one_point(monkeypatch, x, y):
+    monkeypatch.setattr(SD, "_clustered_points",
+                        lambda rng, aabb, n, **kw: [(x, y)])
+
+
+def _kerb():
+    band = slab("sidewalk", (5.0, 0.0), (10.0, 40.0), SIDEWALK_TOP,
+                family="sidewalk")
+    plate = slab("Ground", (0.0, 0.0), (200.0, 200.0), PLATE_TOP)
+    return plate, band
+
+
+def test_a_placement_on_a_kerb_line_is_refused_not_given_either_height(monkeypatch):
+    """9052's replan: 26 origins exactly on the cross street's kerb lines,
+    where the band and the road both hold the point and float noise picks."""
+    plate, band = _kerb()
+    _one_point(monkeypatch, 10.0, 2.0)
+    surf = surfaces([zone("edge", "environmental_edge", "very_high",
+                          (0, -20, 20, 20))], tops=(plate, band))
+    out = plan(surf, instance_budget=None, tri_budget=None)
+    assert out["orders"] == []
+    assert SD.CODE_STRADDLES_STEP in {e["code"] for e in out["keep_out"]["entries"]}
+
+
+def test_the_same_placement_clear_of_the_kerb_stands_on_the_band(monkeypatch):
+    """Falsification: the refusal is about the step, not about the band."""
+    plate, band = _kerb()
+    _one_point(monkeypatch, 9.0, 2.0)
+    surf = surfaces([zone("edge", "environmental_edge", "very_high",
+                          (0, -20, 20, 20))], tops=(plate, band))
+    out = plan(surf, instance_budget=None, tri_budget=None)
+    assert [o["pos"] for o in out["orders"]] == [[9.0, 2.0, SIDEWALK_TOP]]
+
+
+def test_footprint_step_sees_a_rise_and_an_overhang():
+    plate, band = _kerb()
+    slabs = [plate, band]
+    # on the plate, 5 cm from the band's face, 10 cm radius: the band rises
+    assert abs(SD.footprint_step((10.05, 0.0), 0.1, slabs, PLATE_TOP)
+               - (SIDEWALK_TOP - PLATE_TOP)) < 1e-9
+    # on the band, 5 cm from its edge: the rim hangs over the plate
+    assert abs(SD.footprint_step((9.95, 0.0), 0.1, slabs, SIDEWALK_TOP)
+               - (SIDEWALK_TOP - PLATE_TOP)) < 1e-9
+    # clear of the edge on either side: flat
+    assert SD.footprint_step((10.2, 0.0), 0.1, slabs, PLATE_TOP) == 0.0
+    assert SD.footprint_step((9.8, 0.0), 0.1, slabs, SIDEWALK_TOP) == 0.0
+    # over the edge of the world
+    assert SD.footprint_step((99.95, 0.0), 0.1, slabs, PLATE_TOP) == math.inf

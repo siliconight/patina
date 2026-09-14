@@ -3,6 +3,67 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.22.0] - surface dressing stands on the surface under it
+
+### Fixed
+- **Every order was placed at pos z 0.0**, whatever was under it. Cold run
+  9052's walk copy, read against the slabs of the scene it was placed on:
+  2,500 of 4,909 instances more than 5 mm inside the slab under them -- 1,648
+  inside a 0.0974 m sidewalk band, 739 in the road, 64 in a path, 49 in a
+  kerb cut. `plan()` now reads the top of the surface under each placement
+  from the `tops` block Lot 0.72.0's `site_surfaces` declares, at the
+  position that ships (after rounding, so a point at a slab's edge is asked
+  once), and writes it into pos[2].
+
+### Added
+- **`check_tops()`**: a surfaces block with no `tops`, a `tops_rule` other
+  than the one this module implements (`TOPS_RULE`, matched verbatim), or a
+  slab it does not recognise is a `PlanError`, not a plan at z 0.
+- **`surface_top()`**: the height under a plan point by `TOPS_RULE`.
+- **`DRESS_REFUSED_NO_SURFACE`**: a placement no declared slab holds is
+  refused and recorded.
+- **`DRESS_REFUSED_STRADDLES_STEP`** and `footprint_step()`: a placement whose
+  footprint circle (the equal-area radius the exclusion test already uses)
+  reaches a surface more than `STEP_TOLERANCE_M` (5 mm) above or below the
+  one at its origin is refused. With the height alone, 9052's replan still
+  had 26 origins exactly on the cross street's kerb lines -- the cluster
+  scatter clamps strays onto their zone's edge, 784 of 4,948 orders sit on
+  one -- where the band and the road both hold the point and float noise
+  picks the top. A rise is tested exactly; a drop is sampled at 16 rim
+  points, which can miss an overhang shallower than r(1 - cos(pi/16)), under
+  2 mm at this layer's radii. 5 mm is the tolerance the heights were measured
+  against, not a number derived from the art.
+- **`audit(manifest, tops=...)`** reports `DRESS_OFF_SURFACE` for an order
+  whose pos[2] is not the top under it. The manifest schema is closed, so the
+  slabs are passed in; the CLI passes them.
+
+### Changed
+- `version.py` says 0.22.0. It had stayed at 0.21.0 through 0.21.1, so the
+  manifests 0.21.1 wrote were stamped `patina 0.21.0`.
+
+### Notes
+- Measured through the pipeline's stages on scratch copies of cold run
+  9052 (Lot 0.72.0 `site_surfaces` -> this planner -> Level Factory's
+  `dressing_scene` writer, swapped into a copy of the walk package on Lot
+  0.71.0 geometry): 4,690 instances, 0 more than 5 mm off the slab under
+  them in the Lux-applied scene (`ground` 0/3,206, `sidewalk` 0/1,432,
+  `wall_base` 0/52). Refused: 257 straddling a step (`sidewalk` 173, `road`
+  52, `open` 20, `perimeter` 10, `path` 1, `wall_base` 1), 362 exclusions,
+  404 instance budget. The same stages on 0.21.1: 4,948 instances, all at
+  z 0, 2,587 more than 5 mm off.
+- A refused placement draws no yaw, so the orders after it in the same zone
+  take different assets and scales from the ones 0.21.1 would have written.
+  Positions are drawn before any refusal and do not move.
+- Tests: a placement on a raised band stands on its top; where slabs overlap
+  the higher top wins, checked against an independent test; a yawed slab
+  holds points along its own axis; the height is read at the rounded
+  position; surfaces with no `tops`, another `tops_rule`, or a malformed slab
+  are refused; a candidate over no surface is refused and recorded; audit
+  catches an order at z 0 on a band; a placement on a kerb line is refused
+  and the same placement 1 m inside the band is placed on it; footprint_step
+  sees a rise, an overhang, flat ground on either side, and the plate's edge.
+  All twelve fail on 0.21.1.
+
 ## [0.21.1] - the clutter asset set is tracked
 
 ### Added
