@@ -153,7 +153,35 @@ def load_glb(path: str) -> Scene:
     # And the sibling lights.json -- dressing that depends on a light needs to
     # know where the light is (v0.19).
     scene.lights = _load_lights(path)
+    scene.up_axis_hint = _declared_up(g)
     return scene
+
+
+#: Blender's glTF exporter writes +Y up unless `export_yup=False`, and Deli
+#: Counter exports with the default (`deli_counter.py`,
+#: `bpy.ops.export_scene.gltf`). A file that says Blender wrote it is Y-up.
+_BLENDER_GENERATOR = "Khronos glTF Blender I/O"
+#: Where Patina's own output records the axis it was given: Patina replaces
+#: the generator string, so without this a second pass over its output would
+#: be back to guessing.
+_UP_EXTRA = "patina_up_axis"
+
+
+def _declared_up(g) -> Optional[int]:
+    """The up axis a file declares (0.24.0), or None when it declares none.
+
+    THE GUESS IT REPLACES, kept above it: `slots.detect_up_axis` took the
+    smallest-extent axis as up because "a building is wide and shallow". The
+    rowhome Empties are 6.3 m wide and up to 10.1 m tall, so up read X and
+    every height-dependent pass ran on its side (cold run 9147).
+    """
+    asset = g.asset
+    extras = getattr(asset, "extras", None) or {}
+    if isinstance(extras, dict) and extras.get(_UP_EXTRA) in ("X", "Y", "Z"):
+        return "XYZ".index(extras[_UP_EXTRA])
+    if (getattr(asset, "generator", None) or "").startswith(_BLENDER_GENERATOR):
+        return 1
+    return None
 
 
 def _load_slots(glb_path: str) -> Optional[dict]:
@@ -224,6 +252,8 @@ def save_glb(scene: Scene, path: str) -> None:
     """Serialise a :class:`Scene` to a deterministic ``.glb``."""
     g = gl.GLTF2()
     g.asset = gl.Asset(version="2.0", generator=f"Patina {version.__version__}")
+    if scene.up_axis_hint is not None:          # carried forward, never guessed into
+        g.asset.extras = {_UP_EXTRA: "XYZ"[scene.up_axis_hint]}
     bb = _BufferBuilder()
 
     def push_accessor(arr: np.ndarray, ctype: int, atype: str,

@@ -450,11 +450,23 @@ def detect_up_axis(scene) -> int:
     Z-up, which masked the difference — banding, anchors and grime all assumed
     Z-up and silently read the wrong axis on real data.
 
-    A building is wide and shallow: the vertical extent (wall height, a few
-    metres) is the *smallest* of the three axis ranges. Detecting up as the
-    min-range axis makes the height-dependent passes correct for both DC's
-    Y-up exports and legacy Z-up shells, with no per-file configuration.
+    THE FILE IS ASKED FIRST (0.24.0): `Scene.up_axis_hint`, which
+    `gltf_io.load_glb` reads off the file's own declaration -- Patina's
+    `asset.extras`, else Blender's exporter as the generator, which writes
+    +Y up. Only a file that declares nothing falls through to the guess below.
+
+    RETRACTED AS THE RULE, kept as the fallback: "A building is wide and
+    shallow: the vertical extent (wall height, a few metres) is the
+    *smallest* of the three axis ranges." Deli Counter 0.174.0's rowhome
+    Empties are 6.3 m wide and 6.8-10.1 m tall; up read X for all six, and
+    their grime, banding and dressing anchors ran on their side -- curbs and
+    gutters standing out of the walls in cold run 9147's frames. Still the
+    right answer for the legacy Z-up fixture, which says nothing about
+    itself and is wide.
     """
+    hint = getattr(scene, "up_axis_hint", None)
+    if hint is not None:
+        return int(hint)
     lo = np.full(3, np.inf)
     hi = np.full(3, -np.inf)
     for mesh in scene.visual_meshes():

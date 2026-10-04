@@ -103,6 +103,10 @@ def run(args: argparse.Namespace) -> dict:
     up_axis = slots.detect_up_axis(scene)
     if up_axis != 2:
         result["up_axis"] = "XYZ"[up_axis]
+    # Which kind of answer it was (0.24.0): a guess from extents put a
+    # building on its side once, so a reader can tell the two apart.
+    result["up_axis_source"] = ("declared by the file" if scene.up_axis_hint is not None
+                                else "guessed from extents")
 
     # Start skins (v0.3, model skinning): Texpaint-style triangle-unique
     # sheets from *authored* UV0, captured before densify so the sheet shows

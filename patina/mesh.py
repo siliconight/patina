@@ -172,6 +172,10 @@ class Scene:
     gameplay: Optional[dict] = None    # parsed <name>.gameplay.json, if present
     slots: Optional[dict] = None       # parsed <name>.slots.json (DC modular manifest), if present
     lights: Optional[dict] = None      # parsed <name>.lights.json (DC light anchors), if present
+    #: The up axis (0=X 1=Y 2=Z) the FILE declares, or None when it says
+    #: nothing -- set by `gltf_io.load_glb`, read first by
+    #: `slots.detect_up_axis` (0.24.0).
+    up_axis_hint: Optional[int] = None
 
     def visual_meshes(self) -> list[Mesh]:
         return [m for m in self.meshes if m.is_visual()]
