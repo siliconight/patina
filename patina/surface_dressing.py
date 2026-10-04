@@ -126,6 +126,9 @@ CODE_UNBOUNDED = "DRESS_COST_UNBOUNDED"
 CODE_NO_SURFACE = "DRESS_REFUSED_NO_SURFACE"
 CODE_OFF_SURFACE = "DRESS_OFF_SURFACE"
 CODE_STRADDLES_STEP = "DRESS_REFUSED_STRADDLES_STEP"
+#: 0.23.0: a candidate point whose ground the precedence rule
+#: (`zone_for`) gives to a zone of another family.
+CODE_NOT_OWNER = "DRESS_REFUSED_ANOTHER_ZONES_GROUND"
 
 # WHERE A PLACEMENT STANDS. Up to 0.21 every order was written at pos z 0.0,
 # whatever was under it. Cold run 9052, read back off the shipped scene: of
@@ -302,6 +305,17 @@ def band_of(height_m, bands):
 def zone_area_m2(zone):
     a = zone["aabb"]
     return max(0.0, (a[3] - a[0])) * max(0.0, (a[4] - a[1]))
+
+
+def zone_family(zone):
+    """A zone's family: Lot's `zone_family:<f>` tag, or its own id when it
+    carries none. A corridor is chopped into boxes that overlap at their
+    joins (`road_0_s00`, `road_0_s01`), and a point on a join is the same
+    ground whichever box placed it, so ownership is asked of the family."""
+    for t in zone.get("tags") or ():
+        if t.startswith("zone_family:"):
+            return t.split(":", 1)[1]
+    return zone["surface_zone_id"]
 
 
 def zone_for(point, zones):
@@ -540,6 +554,17 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
                             f"{spent:.4f} already spent"),
                 })
                 break
+            # A ZONE DRESSES ONLY ITS OWN GROUND (0.23.0). Asked after the
+            # draws above, so a refusal here does not shift the asset, scale
+            # or yaw of the points after it.
+            owner = zone_for((x, y), zones)
+            if owner is None or zone_family(owner) != zone_family(zone):
+                keep_out.append({
+                    "code": CODE_NOT_OWNER, "surface_zone_id": zid,
+                    "asset_id": c["asset_id"],
+                    "why": ("the precedence rule gives this ground to "
+                            + (owner["surface_zone_id"] if owner else "no zone"))})
+                continue
             radius = math.sqrt(fp / math.pi)
             tags = excluded((x, y), exclusions, radius_m=radius)
             if tags:
