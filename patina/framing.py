@@ -146,13 +146,25 @@ def roofline_slots(manifest: SlotManifest) -> list:
     parapet, where 9148 had them at 8.92 under the roof. A gutter hangs at
     the eave, which is the top of the highest STOREY wall, so parapets are
     left out before the top storey is found.
+
+    AND THE TOP STOREY'S OPENINGS ARE PART OF IT (0.25.1). A window is a slot
+    of its own, so a roofline of WALL slots stopped at every top-floor window
+    bay: cold run 9153's rowhomes showed a pale gutter broken over each one.
+    An exterior window, door or breach on the top storey carries its stretch
+    of the eave. Its module is the storey's height (Deli Counter >= 0.176.0
+    names heights apart), so its gutter hangs at the same line, above the
+    opening's head -- clear of the keep-out the dressing filter enforces.
     """
     walls = [s for s in wall_slots(manifest) if not _is_parapet(s)]
     storeys = [int(s.story) for s in walls if s.story is not None]
     if not storeys:
         return walls
     top = max(storeys)
-    return [s for s in walls if s.story is not None and int(s.story) == top]
+    eave = [s for s in walls if s.story is not None and int(s.story) == top]
+    eave += [s for s in manifest.slots
+             if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")
+             and s.story is not None and int(s.story) == top]
+    return eave
 
 
 def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
