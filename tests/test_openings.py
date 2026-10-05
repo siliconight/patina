@@ -88,16 +88,17 @@ def test_a_strip_that_only_REACHES_the_opening_is_caught():
     assert openings.hits(beside, boxes), "swept span must be tested, not the origin"
 
 
-def test_the_exemptions_are_the_listed_three():
+def test_the_exemptions_are_the_listed_five():
     """Surrounding an opening is the entire point of a frame. An Empty's
-    window fixtures (0.26.0) stand IN their sealed opening -- the second and
-    third exemptions, added deliberately, which is what this pin is for."""
+    window fixtures (0.26.0) stand IN their sealed opening, and its stone
+    lintel and sill (0.27.0) on that opening's head and sill -- each added
+    deliberately, which is what this pin is for."""
     boxes = _boxes()
     f = _order("frame", (0.0, 10.0, 1.05), size2=[1.2, 2.1])
     assert openings.hits(f, boxes) == []
     kept, rep = openings.apply([f], boxes)
     assert kept == [f] and not rep["dropped"]
-    assert openings.EXEMPT == ("frame", "window_bars", "ac_unit"), \
+    assert openings.EXEMPT == ("frame", "window_bars", "ac_unit", "lintel", "window_sill"), \
         "adding another must be deliberate"
 
 

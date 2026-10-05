@@ -441,6 +441,10 @@ def run(args: argparse.Namespace) -> dict:
             if slot_manifest is not None and not args.anchor_patina_space:
                 panels += framing.window_fixture_orders(
                     slot_manifest, regions, seed=args.seed)
+                # 0.27.0: and the stone lintels and sills of the same
+                # sealed openings
+                panels += framing.opening_trim_orders(
+                    slot_manifest, regions, seed=args.seed)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

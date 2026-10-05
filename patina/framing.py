@@ -182,6 +182,59 @@ def window_fixture_orders(manifest: SlotManifest, regions: list, *,
     return orders
 
 
+def opening_trim_orders(manifest: SlotManifest, regions: list, *,
+                        seed: int) -> list[dict]:
+    """AN EMPTY'S STONE LINTELS AND SILLS (0.27.0), as Zoo (>= 1.71.0) builds
+    them. The walker's South Philly photograph: "white stone lintels and
+    sills over and under every window".
+
+    * ``lintel`` -- one per opening of a facade window or doorway, at the
+      opening's HEAD on the wall face; Zoo stands the block on that line.
+    * ``window_sill`` -- one per opening of a facade window, at its SILL on
+      the wall face; Zoo hangs the block below that line. A door has none:
+      its threshold is the sidewalk's.
+
+    ONLY ON A FACADE SLOT (`glazing: "facade"`), as the window fixtures are,
+    and for the same reason they are exempt from the opening keep-out
+    (`openings.EXEMPT`): they sit on the opening's own head and sill, inside
+    its margin, and the opening is sealed. ``size2`` is the opening.
+    """
+    uv = _uv(regions, "frame")
+    orders = []
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    for s in manifest.slots:
+        if s.role not in ("window", "doorway") or s.glazing != "facade" or not s.dims:
+            continue
+        frame = wall_frame(s, center, thick_m)
+        base_z = _base_z(s)
+        for k, op in enumerate(s.openings):
+            ow = float(op.get("width", 0.0))
+            oh = float(op.get("height", 0.0))
+            if ow <= 0.0 or oh <= 0.0:
+                continue
+            sill = float(op.get("sill", 0.0))
+            trims = [("lintel", base_z + sill + oh)]
+            if s.role == "window":
+                trims.append(("window_sill", base_z + sill))
+            for cover, z in trims:
+                pos, n = _face(s, 0.0, z, frame)
+                rng = rng_for(seed, cover, s.slot_id, str(k))
+                orders.append({
+                    "anchor_kind": "opening_trim",
+                    "cover": cover,
+                    "collision": "none",
+                    "trim_piece": "frame",
+                    "uv_region": uv,
+                    "slot_id": s.slot_id,
+                    "pos": pos, "normal": n,
+                    "size": round(ow, 3),
+                    "size2": [round(ow, 3), round(oh, 3)],
+                    "seed_offset": int(rng.integers(0, 1_000_000)),
+                })
+    return orders
+
+
 def roofline_slots(manifest: SlotManifest) -> list:
     """Exterior wall slots on the TOP storey -- the ones that have a roofline.
 

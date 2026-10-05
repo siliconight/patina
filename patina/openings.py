@@ -50,8 +50,10 @@ TRAVERSABLE = ("door", "garage", "window", "breach")
 #: fixtures (0.26.0) -- `window_bars` over the opening, an `ac_unit` standing
 #: in it -- are the opening's own, and are ordered only on a facade window:
 #: Deli Counter seals an Empty and records no gameplay openings on it, so no
-#: body or shot uses the hole they stand in.
-EXEMPT = ("frame", "window_bars", "ac_unit")
+#: body or shot uses the hole they stand in. Its stone `lintel` and
+#: `window_sill` (0.27.0) sit on the same sealed opening's head and sill,
+#: inside its margin, and are exempt for the same reason.
+EXEMPT = ("frame", "window_bars", "ac_unit", "lintel", "window_sill")
 
 #: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
 #: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base
