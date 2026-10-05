@@ -441,12 +441,27 @@ def roofline_slots(manifest: SlotManifest) -> list:
 
 def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
                   drop: float = 0.08) -> list[dict]:
-    """One ``gutter_run`` per top-storey exterior wall slot, under the roofline."""
+    """One ``gutter_run`` per top-storey exterior wall slot, under the roofline.
+
+    NOT ON AN EMPTY'S PARTY WALL (0.29.1). On an Empty -- a shell any of whose
+    slots carries `glazing: "facade"` -- a face with no window, door or breach
+    on any storey is a party wall, and a rowhouse roof drains front and back:
+    the downspouts already keep to faces with openings. Between two houses of
+    one height the party-wall gutter was hidden; beside a lower neighbour it
+    stood exposed and, lit against an unlit wall, read as lines floating in
+    the sky (roadmap 184, cold runs 9160 and 9161). A free-standing building
+    keeps a gutter on every face, as before.
+    """
     uv = _uv(regions, "flashing")
     orders = []
     center = footprint_center(manifest)
     thick_m = modal_thickness(manifest)
+    empty = any(s.glazing == "facade" for s in manifest.slots)
+    faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
+             if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
     for s in roofline_slots(manifest):
+        if empty and _side(wall_frame(s, center, thick_m)) not in faced:
+            continue
         _w, _d, h = s.size()
         # `run`, not dims[0]. A west wall's dims[0] is its 35 cm THICKNESS, so
         # the gutter shipped as a 35 cm stub every 2 m -- dashes along the
