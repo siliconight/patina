@@ -422,6 +422,11 @@ def run(args: argparse.Namespace) -> dict:
                 if args.gutters:
                     panels += framing.gutter_orders(slot_manifest, regions,
                                                     seed=args.seed)
+                    # 0.25.0: a gutter brings its downspouts, placed clear of
+                    # the openings by the same keep-out the filter enforces
+                    panels += framing.downspout_orders(
+                        slot_manifest, regions, seed=args.seed,
+                        keep_out=openings.keep_out_boxes(slot_manifest))
                 if args.pilasters:
                     panels += framing.pilaster_orders(slot_manifest, regions,
                                                       seed=args.seed)
@@ -602,7 +607,9 @@ def build_parser() -> argparse.ArgumentParser:
                         "fit.openings)")
     p.add_argument("--gutters", action="store_true",
                    help="with --dressing + slots.json: a gutter_run per "
-                        "exterior wall slot, just under the roofline")
+                        "top-storey exterior wall slot, just under the "
+                        "roofline, and downspouts down every face with an "
+                        "opening (0.25.0)")
     p.add_argument("--pilasters", action="store_true",
                    help="with --dressing + slots.json: a vertical pilaster "
                         "at each exterior wall slot's module seam")

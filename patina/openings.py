@@ -69,6 +69,8 @@ _ZOO_CROSS = {                        # zoo_keeper/core/dressing.py _COVER
     "edge_strip": 0.10, "base_course": 0.18, "curb": 0.12,
     "conduit_run": 0.05, "panel_field": 1.20, "gutter_run": 0.14,
     "pilaster": 0.12, "frame": 0.12,
+    # 0.25.0: a downspout is a 3-inch pipe, and runs up the wall like a conduit
+    "downspout": 0.076,
 }
 
 #: Zoo does not use `size` as the span. It SCALES it:
@@ -258,7 +260,7 @@ def _run_axis(order) -> tuple:
     it stands proud of. ``conduit_run`` is the exception -- its span is
     vertical, because it climbs a wall rather than crossing it.
     """
-    if order.get("cover") == "conduit_run":
+    if order.get("cover") in ("conduit_run", "downspout"):
         return (0.0, 0.0, 1.0)
     t = order.get("tangent")
     if t and len(t) >= 3 and (abs(t[0]) + abs(t[1]) + abs(t[2])) > 1e-9:
