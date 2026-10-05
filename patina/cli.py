@@ -435,6 +435,12 @@ def run(args: argparse.Namespace) -> dict:
                 panels += paneling.panel_orders(
                     slot_manifest, regions, seed=args.seed,
                     panel=args.panel_size, gap=args.panel_gap)
+            # 0.26.0: an Empty's window fixtures -- the bars and air
+            # conditioners Deli Counter (>= 0.181.0) chose per window. The
+            # slot is the opt-in, so they need no flag.
+            if slot_manifest is not None and not args.anchor_patina_space:
+                panels += framing.window_fixture_orders(
+                    slot_manifest, regions, seed=args.seed)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

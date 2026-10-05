@@ -88,14 +88,17 @@ def test_a_strip_that_only_REACHES_the_opening_is_caught():
     assert openings.hits(beside, boxes), "swept span must be tested, not the origin"
 
 
-def test_frame_is_the_sole_exemption():
-    """Surrounding an opening is the entire point of a frame."""
+def test_the_exemptions_are_the_listed_three():
+    """Surrounding an opening is the entire point of a frame. An Empty's
+    window fixtures (0.26.0) stand IN their sealed opening -- the second and
+    third exemptions, added deliberately, which is what this pin is for."""
     boxes = _boxes()
     f = _order("frame", (0.0, 10.0, 1.05), size2=[1.2, 2.1])
     assert openings.hits(f, boxes) == []
     kept, rep = openings.apply([f], boxes)
     assert kept == [f] and not rep["dropped"]
-    assert openings.EXEMPT == ("frame",), "adding a second must be deliberate"
+    assert openings.EXEMPT == ("frame", "window_bars", "ac_unit"), \
+        "adding another must be deliberate"
 
 
 # -- conduit is shortened, not dropped -------------------------------------- #

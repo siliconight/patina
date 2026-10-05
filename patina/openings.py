@@ -45,9 +45,13 @@ import math
 #: something already came through.
 TRAVERSABLE = ("door", "garage", "window", "breach")
 
-#: Covers exempt from the rule. Exactly one, and it is listed rather than
-#: inferred so that adding a second is a visible decision.
-EXEMPT = ("frame",)
+#: Covers exempt from the rule, listed rather than inferred so that adding one
+#: is a visible decision. A `frame` rings its opening. An Empty's window
+#: fixtures (0.26.0) -- `window_bars` over the opening, an `ac_unit` standing
+#: in it -- are the opening's own, and are ordered only on a facade window:
+#: Deli Counter seals an Empty and records no gameplay openings on it, so no
+#: body or shot uses the hole they stand in.
+EXEMPT = ("frame", "window_bars", "ac_unit")
 
 #: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
 #: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base
@@ -101,7 +105,9 @@ MARGIN = 0.08
 #: Nav agent radius, from Lot's walk-scene NavigationMesh (`agent_radius = 0.4`
 #: in `site_walk.tscn`). The body that has to fit through the hole.
 _AGENT_RADIUS = 0.40
-#: Deepest any cover stands proud of its wall -- `gutter_run` in Zoo's _COVER.
+#: Deepest any cover the rule JUDGES stands proud of its wall -- `gutter_run`
+#: in Zoo's _COVER. An `ac_unit` stands 0.30 out (Zoo >= 1.69.0), but it is in
+#: `EXEMPT` and ordered only on a sealed window, so no lane is sized for it.
 _PROUDEST_COVER = 0.10
 
 

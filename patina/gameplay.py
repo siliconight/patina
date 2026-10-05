@@ -81,8 +81,11 @@ from __future__ import annotations
 #: :mod:`patina.openings`, which derives its lane reach from the same number.
 _AGENT_RADIUS = 0.40
 
-#: Deepest any cover stands proud of its wall -- ``gutter_run`` in Zoo's
-#: ``_COVER``. Also mirrored from :mod:`patina.openings`.
+#: Deepest any cover the keep-out JUDGES stands proud of its wall --
+#: ``gutter_run`` in Zoo's ``_COVER``. Also mirrored from
+#: :mod:`patina.openings`, and like it leaves out the exempt covers: an
+#: ``ac_unit`` stands 0.30 out (Zoo >= 1.69.0), only on an Empty's sealed
+#: window, which carries no gameplay marker.
 _PROUDEST_COVER = 0.10
 
 #: DERIVED: a body standing at a marker, plus the deepest thing Patina can

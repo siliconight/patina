@@ -89,6 +89,14 @@ class Slot:
     pivot: str = "center"
     collision: str = "convex"
     openings: list = field(default_factory=list)
+    # An Empty's window (Deli Counter >= 0.179.0 / 0.181.0): `glazing:
+    # "facade"` marks an opening with nothing behind it, `pane` its painted
+    # state, `ac` / `bars` what hangs in it -- read by
+    # `framing.window_fixture_orders` (0.26.0).
+    glazing: Optional[str] = None
+    pane: Optional[str] = None
+    ac: bool = False
+    bars: bool = False
 
     def size(self) -> tuple:
         """The slot's real-world ``(w, d, h)`` in metres.
@@ -205,6 +213,10 @@ def parse(raw: dict) -> SlotManifest:
             pivot=fit.get("pivot", "center"),
             collision=fit.get("collision", "convex"),
             openings=list(fit.get("openings", [])),
+            glazing=r.get("glazing"),
+            pane=r.get("pane"),
+            ac=bool(r.get("ac", False)),
+            bars=bool(r.get("bars", False)),
         ))
     return SlotManifest(
         version=raw.get("slot_manifest_version", "0"),

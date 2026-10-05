@@ -126,6 +126,62 @@ def frame_orders(manifest: SlotManifest, regions: list, *, seed: int,
     return orders
 
 
+def window_fixture_orders(manifest: SlotManifest, regions: list, *,
+                          seed: int) -> list[dict]:
+    """AN EMPTY'S WINDOW FIXTURES (0.26.0), as Zoo (>= 1.69.0) builds them.
+
+    * ``window_bars`` -- one per opening of a barred window, at the opening's
+      centre on the wall face, sized to it (``size2``);
+    * ``ac_unit`` -- one per opening of a window with an air conditioner, at
+      its SILL on the wall face: Zoo stands the unit there and reaches it back
+      to the pane, and ``size2`` tells it how wide the opening is to close.
+
+    ONLY ON A FACADE WINDOW. Deli Counter (>= 0.181.0) writes `bars` and `ac`
+    only on an Empty's sealed windows; a real window is a firing line, and
+    bars a bullet passes through would lie about it, so a slot without
+    `glazing: "facade"` orders nothing whatever it carries. THE SLOT IS THE
+    OPT-IN, so there is no flag. Exempt from the opening keep-out, as a frame
+    is (`openings.EXEMPT`).
+    """
+    uv = _uv(regions, "frame")
+    orders = []
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    for s in manifest.slots:
+        if (s.role != "window" or s.glazing != "facade" or not s.dims
+                or not (s.ac or s.bars)):
+            continue
+        frame = wall_frame(s, center, thick_m)
+        base_z = _base_z(s)
+        for k, op in enumerate(s.openings):
+            ow = float(op.get("width", 0.0))
+            oh = float(op.get("height", 0.0))
+            if ow <= 0.0 or oh <= 0.0:
+                continue
+            sill = float(op.get("sill", 0.0))
+            fixtures = []
+            if s.bars:
+                fixtures.append(("window_bars", base_z + sill + oh / 2.0))
+            if s.ac:
+                fixtures.append(("ac_unit", base_z + sill))
+            for cover, z in fixtures:
+                pos, n = _face(s, 0.0, z, frame)
+                rng = rng_for(seed, cover, s.slot_id, str(k))
+                orders.append({
+                    "anchor_kind": "window_fixture",
+                    "cover": cover,
+                    "collision": "none",
+                    "trim_piece": "frame",
+                    "uv_region": uv,
+                    "slot_id": s.slot_id,
+                    "pos": pos, "normal": n,
+                    "size": round(ow, 3),
+                    "size2": [round(ow, 3), round(oh, 3)],
+                    "seed_offset": int(rng.integers(0, 1_000_000)),
+                })
+    return orders
+
+
 def roofline_slots(manifest: SlotManifest) -> list:
     """Exterior wall slots on the TOP storey -- the ones that have a roofline.
 
