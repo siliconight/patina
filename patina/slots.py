@@ -100,6 +100,12 @@ class Slot:
     # and an Empty front door's iron security door (Deli Counter >= 0.182.0),
     # read by `framing.door_fixture_orders` (0.28.0)
     security_door: bool = False
+    # and an Empty roof's TV antenna and satellite dish, with the facing of
+    # the front they are set back from (Deli Counter >= 0.185.0), read by
+    # `framing.roof_fixture_orders` (0.29.0)
+    antenna: bool = False
+    dish: bool = False
+    front: Optional[str] = None
 
     def size(self) -> tuple:
         """The slot's real-world ``(w, d, h)`` in metres.
@@ -221,6 +227,9 @@ def parse(raw: dict) -> SlotManifest:
             ac=bool(r.get("ac", False)),
             bars=bool(r.get("bars", False)),
             security_door=bool(r.get("security_door", False)),
+            antenna=bool(r.get("antenna", False)),
+            dish=bool(r.get("dish", False)),
+            front=r.get("front"),
         ))
     return SlotManifest(
         version=raw.get("slot_manifest_version", "0"),

@@ -279,6 +279,125 @@ def opening_trim_orders(manifest: SlotManifest, regions: list, *,
     return orders
 
 
+#: AN EMPTY'S ROOF FIXTURES (0.29.0): where they stand, measured back into the
+#: roof from the inner face of the front parapet. From across the road -- an
+#: eye at 1.6 m some 14 m from the facade -- anything less than about 0.6 m
+#: over the parapet per metre behind it is hidden, so both stand near the
+#: front. The antenna 1.0 to 1.6 m back, within 15 % of the roof's width of
+#: its centreline, its mast and boom drawn per house; the dish 0.25 m back
+#: and 18 to 32 % out on the other half, so the two never share a footing,
+#: its bowl's centre `DISH_ABOVE_PARAPET` over the parapet's top.
+ANTENNA_SETBACK = (1.0, 1.6)
+ANTENNA_ACROSS = 0.15
+ANTENNA_MAST = (2.6, 3.4)
+ANTENNA_BOOM = (1.6, 2.6)
+DISH_SETBACK = 0.25
+DISH_ACROSS = (0.18, 0.32)
+DISH_ABOVE_PARAPET = 0.6
+DISH_WIDTH = 0.5
+#: Bearings in the building's own frame -- Deli Counter's facings, N = +y and
+#: E = +x -- as compass degrees. Philadelphia's TV transmitters stand in
+#: Roxborough, north-west of South Philly, so a rowhouse antenna points about
+#: 325; the DSS satellites sit at 101 W, so a Philadelphia dish looks about
+#: 211, SSW (and up 41 degrees, Zoo's `DISH_TILT`). A building turned at
+#: placement turns its fixtures with it; Level Factory's terrace turns every
+#: house of a row the same way, so a row's antennas point one way, which is
+#: what a street shows.
+ANTENNA_BEARING = 325.0
+DISH_BEARING = 211.0
+_FACING = {"N": (0.0, 1.0), "E": (1.0, 0.0), "S": (0.0, -1.0), "W": (-1.0, 0.0)}
+
+
+def _bearing(deg: float) -> list:
+    r = math.radians(deg)
+    return [round(math.sin(r), 4), round(math.cos(r), 4), 0.0]
+
+
+def _parapet(manifest: SlotManifest, front: str) -> tuple:
+    """``(thickness, height)`` of the front's parapet -- Deli Counter (>= 0.177.0)
+    names its tiles `parapet_<facing>_...` -- or ``(0.0, 0.0)`` with none."""
+    for s in manifest.slots:
+        if str(s.slot_id).startswith(f"parapet_{front}_") and s.dims:
+            w, d, h = s.size()
+            return min(w, d), h
+    return 0.0, 0.0
+
+
+def roof_fixture_orders(manifest: SlotManifest, regions: list, *,
+                        seed: int) -> list[dict]:
+    """AN EMPTY'S TV ANTENNA AND SATELLITE DISH (0.29.0), as Zoo (>= 1.74.0)
+    builds them: a ``tv_antenna`` and a ``sat_dish`` on the roof's top
+    surface, up-facing, each with the bearing it looks along as its
+    ``tangent``.
+
+    Deli Counter (>= 0.185.0) writes `antenna` / `dish` on an Empty's roof
+    slot with `front`, the facing of the wall that holds its front door. THE
+    SLOT IS THE OPT-IN, as a window's fixtures are; one with no `front` orders
+    nothing, since there is no parapet to set them back from. Exempt from the
+    opening keep-out (`openings.EXEMPT`): nothing walks or shoots across an
+    Empty's roof.
+
+    Each house draws its own antenna, its place and the dish's side from
+    ``(seed, kind, building, slot)``: every Empty's roof slot is
+    `roof_footprint`, so keyed by the slot alone the street would draw one.
+    """
+    uv = _uv(regions, "frame")
+    orders = []
+    for s in manifest.slots:
+        if s.role != "roof" or not s.dims or not (s.antenna or s.dish):
+            continue
+        f = _FACING.get(str(s.front or ""))
+        if f is None:
+            continue
+        w, d, _h = s.size()
+        rad = math.radians(float(s.rot_y))
+        a = (math.cos(rad), math.sin(rad))            # the slot's local x
+        b = (-math.sin(rad), math.cos(rad))           # and its local y
+        p = (-f[1], f[0])                             # across the house
+        half = (abs(f[0] * a[0] + f[1] * a[1]) * w + abs(f[0] * b[0] + f[1] * b[1]) * d) / 2.0
+        across = abs(p[0] * a[0] + p[1] * a[1]) * w + abs(p[0] * b[0] + p[1] * b[1]) * d
+        thick, par_h = _parapet(manifest, str(s.front))
+        inner = half - thick
+        top = s.base_z() + s.size()[2]
+        cx, cy = float(s.translation[0]), float(s.translation[1])
+
+        def at(back, off):
+            return [round(cx + f[0] * (inner - back) + p[0] * off, 3),
+                    round(cy + f[1] * (inner - back) + p[1] * off, 3), round(top, 3)]
+
+        side = 1.0
+        if s.antenna:
+            rng = rng_for(seed, "tv_antenna", manifest.building_id, s.slot_id)
+            back = float(rng.uniform(*ANTENNA_SETBACK))
+            off = float(rng.uniform(-ANTENNA_ACROSS, ANTENNA_ACROSS)) * across
+            mast = round(float(rng.uniform(*ANTENNA_MAST)), 3)
+            boom = round(float(rng.uniform(*ANTENNA_BOOM)), 3)
+            side = -1.0 if off >= 0.0 else 1.0
+            orders.append({
+                "anchor_kind": "roof_fixture", "cover": "tv_antenna", "collision": "none",
+                "trim_piece": "frame", "uv_region": uv, "slot_id": s.slot_id,
+                "pos": at(back, off), "normal": [0.0, 0.0, 1.0],
+                "tangent": _bearing(ANTENNA_BEARING),
+                "size": boom, "size2": [boom, mast],
+                "seed_offset": int(rng.integers(0, 1_000_000)),
+            })
+        if s.dish:
+            rng = rng_for(seed, "sat_dish", manifest.building_id, s.slot_id)
+            if not s.antenna:
+                side = 1.0 if rng.uniform() < 0.5 else -1.0
+            off = side * float(rng.uniform(*DISH_ACROSS)) * across
+            orders.append({
+                "anchor_kind": "roof_fixture", "cover": "sat_dish", "collision": "none",
+                "trim_piece": "frame", "uv_region": uv, "slot_id": s.slot_id,
+                "pos": at(DISH_SETBACK, off), "normal": [0.0, 0.0, 1.0],
+                "tangent": _bearing(DISH_BEARING),
+                "size": DISH_WIDTH,
+                "size2": [DISH_WIDTH, round(par_h + DISH_ABOVE_PARAPET, 3)],
+                "seed_offset": int(rng.integers(0, 1_000_000)),
+            })
+    return orders
+
+
 def roofline_slots(manifest: SlotManifest) -> list:
     """Exterior wall slots on the TOP storey -- the ones that have a roofline.
 

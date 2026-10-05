@@ -53,8 +53,11 @@ TRAVERSABLE = ("door", "garage", "window", "breach")
 #: body or shot uses the hole they stand in. Its stone `lintel` and
 #: `window_sill` (0.27.0) sit on the same sealed opening's head and sill,
 #: inside its margin, and are exempt for the same reason. So is the iron
-#: `security_door` (0.28.0) hung in a sealed front door's reveal.
-EXEMPT = ("frame", "window_bars", "ac_unit", "lintel", "window_sill", "security_door")
+#: `security_door` (0.28.0) hung in a sealed front door's reveal, and the
+#: roof's `tv_antenna` and `sat_dish` (0.29.0): nothing walks or shoots
+#: across an Empty's roof.
+EXEMPT = ("frame", "window_bars", "ac_unit", "lintel", "window_sill", "security_door",
+          "tv_antenna", "sat_dish")
 
 #: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
 #: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base
