@@ -182,6 +182,50 @@ def window_fixture_orders(manifest: SlotManifest, regions: list, *,
     return orders
 
 
+def door_fixture_orders(manifest: SlotManifest, regions: list, *,
+                        seed: int) -> list[dict]:
+    """AN EMPTY'S IRON SECURITY DOOR (0.28.0), as Zoo (>= 1.72.0) builds it:
+    one ``security_door`` per opening of a facade doorway whose slot carries
+    `security_door` (Deli Counter >= 0.182.0 writes it on the front door of a
+    house that has one), at the opening's centre on the wall face, sized to
+    it. Zoo hangs it in the reveal, in front of the leaf.
+
+    ONLY ON A FACADE DOORWAY, as the window fixtures are: a real door is a way
+    in. The slot is the opt-in, and the cover is exempt from the opening
+    keep-out (`openings.EXEMPT`)."""
+    uv = _uv(regions, "frame")
+    orders = []
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    for s in manifest.slots:
+        if (s.role != "doorway" or s.glazing != "facade" or not s.dims
+                or not s.security_door):
+            continue
+        frame = wall_frame(s, center, thick_m)
+        base_z = _base_z(s)
+        for k, op in enumerate(s.openings):
+            ow = float(op.get("width", 0.0))
+            oh = float(op.get("height", 0.0))
+            if ow <= 0.0 or oh <= 0.0:
+                continue
+            sill = float(op.get("sill", 0.0))
+            pos, n = _face(s, 0.0, base_z + sill + oh / 2.0, frame)
+            rng = rng_for(seed, "security_door", s.slot_id, str(k))
+            orders.append({
+                "anchor_kind": "door_fixture",
+                "cover": "security_door",
+                "collision": "none",
+                "trim_piece": "frame",
+                "uv_region": uv,
+                "slot_id": s.slot_id,
+                "pos": pos, "normal": n,
+                "size": round(ow, 3),
+                "size2": [round(ow, 3), round(oh, 3)],
+                "seed_offset": int(rng.integers(0, 1_000_000)),
+            })
+    return orders
+
+
 def opening_trim_orders(manifest: SlotManifest, regions: list, *,
                         seed: int) -> list[dict]:
     """AN EMPTY'S STONE LINTELS AND SILLS (0.27.0), as Zoo (>= 1.71.0) builds

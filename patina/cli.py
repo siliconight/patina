@@ -445,6 +445,9 @@ def run(args: argparse.Namespace) -> dict:
                 # sealed openings
                 panels += framing.opening_trim_orders(
                     slot_manifest, regions, seed=args.seed)
+                # 0.28.0: and a secured front door's iron security door
+                panels += framing.door_fixture_orders(
+                    slot_manifest, regions, seed=args.seed)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

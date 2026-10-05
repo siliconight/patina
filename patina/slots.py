@@ -97,6 +97,9 @@ class Slot:
     pane: Optional[str] = None
     ac: bool = False
     bars: bool = False
+    # and an Empty front door's iron security door (Deli Counter >= 0.182.0),
+    # read by `framing.door_fixture_orders` (0.28.0)
+    security_door: bool = False
 
     def size(self) -> tuple:
         """The slot's real-world ``(w, d, h)`` in metres.
@@ -217,6 +220,7 @@ def parse(raw: dict) -> SlotManifest:
             pane=r.get("pane"),
             ac=bool(r.get("ac", False)),
             bars=bool(r.get("bars", False)),
+            security_door=bool(r.get("security_door", False)),
         ))
     return SlotManifest(
         version=raw.get("slot_manifest_version", "0"),
