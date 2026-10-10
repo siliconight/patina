@@ -92,14 +92,27 @@ def _visual_aabb(scene: Scene):
     return lo, hi
 
 
-def _exterior_wall_faces(scene: Scene):
-    """Yield (centroid, outward_normal, world-z-extent) for exterior-wall faces."""
+def _exterior_wall_faces(scene: Scene, mirrored: bool = False):
+    """Yield (centroid, outward_normal, world-z-extent) for exterior-wall faces.
+
+    ``mirrored`` says the positions are in a REFLECTED view of the file
+    (0.30.0, roadmap 221): :func:`_up_to_z` swaps two axes, and a swap reverses
+    every triangle's winding, so the cross product below comes out pointing
+    INTO the building. `surfaces.classify` took each face's normal in the
+    file's own frame and kept only the outward ones; this negates the
+    reflected product so the anchor pass agrees with it. Measured on
+    strip_club_a01 before the fix: all 10 wall segments' normals pointed at
+    the building's centre, and Zoo filed every base course and conduit with
+    the opposite side's merge (`docs/findings/patina_cover_normals/` at the
+    factory root)."""
     for mesh in scene.visual_meshes():
         for prim in mesh.primitives:
             if prim.face_roles is None:
                 continue
             tris = prim.positions[prim.indices]                  # (T,3,3)
             fn = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+            if mirrored:
+                fn = -fn
             ln = np.linalg.norm(fn, axis=1, keepdims=True)
             fn = np.divide(fn, ln, out=np.zeros_like(fn), where=ln > 1e-9)
             centroids = tris.mean(axis=1)                         # (T,3)
@@ -108,13 +121,15 @@ def _exterior_wall_faces(scene: Scene):
                     yield centroids[t], fn[t], (tris[t, :, 2].min(), tris[t, :, 2].max())
 
 
-def _wall_segments(scene: Scene):
+def _wall_segments(scene: Scene, mirrored: bool = False):
     """Deduplicated exterior-wall verticals as (centroid_xy, outward_horiz_normal,
     width_estimate, z_lo, z_hi). Collapses the many triangles of one wall panel
-    into a few representative segments keyed by (normal-axis, boundary bucket)."""
+    into a few representative segments keyed by (normal-axis, boundary bucket).
+    A segment can stand inside a wall, behind its face: the anchor pass asks
+    :func:`_buried` of each point it would place on one."""
     buckets: dict[tuple, list] = {}
     lo, hi = _visual_aabb(scene)
-    for c, n, (zlo, zhi) in _exterior_wall_faces(scene):
+    for c, n, (zlo, zhi) in _exterior_wall_faces(scene, mirrored):
         horiz = np.array([n[0], n[1]])
         h = np.linalg.norm(horiz)
         if h < 1e-6:
@@ -141,6 +156,52 @@ def _wall_segments(scene: Scene):
         }
 
 
+#: How far behind a wall's face another face of the same facing may stand and
+#: still be the wall's own inside, metres. `surfaces.classify` accepts an
+#: exterior wall within `_BOUNDARY_TOL` (0.25) of the building's bounds, so no
+#: two of its segments of one facing stand further apart than that.
+BEHIND_DEPTH = 0.5
+#: Slack on a run's ends, metres: segment runs are measured between face
+#: CENTROIDS, so a wall's run stops short of its ends.
+RUN_SLACK = 0.25
+#: Slack on a height, metres.
+HEIGHT_SLACK = 0.05
+
+
+def _buried(seg, along: float, z: float, segs) -> bool:
+    """Whether the point on ``seg`` at ``along`` and height ``z`` is inside a wall.
+
+    0.30.0, roadmap 221. `surfaces.classify` calls a vertical face an exterior
+    wall when it faces out and stands within `_BOUNDARY_TOL` of the bounds,
+    and the inside of a wall qualifies. On strip_club_a01 the floor slab stops
+    under the wall and the roof slab over it, both on the 0.3 m wall's centre
+    line, 0.15 m in, and with the ends of the interior walls meeting it they
+    made a segment on each wall's centre line. 22 of the club's 51 base
+    courses were ordered onto them, inside the wall.
+
+    The point is buried when another segment of the same axis and facing
+    stands further OUT, within `BEHIND_DEPTH`, and spans the point's run
+    position and its height: a face stands in front of it there. Asked per
+    point, not per segment. RETRACTED, kept: the first draft dropped a whole
+    segment when a face covered all of it, and on the club no centre-line
+    segment was covered, since the slabs run 0.3 m below the face and 0.3 m
+    above it. Per point, a base course at the foot is buried, and a roofline
+    anchor on the roof slab's exposed edge is not."""
+    sign = 1.0 if seg["normal"][seg["axis"]] > 0 else -1.0
+    for o in segs:
+        if o is seg or o["axis"] != seg["axis"]:
+            continue
+        if (1.0 if o["normal"][o["axis"]] > 0 else -1.0) != sign:
+            continue
+        ahead = (o["fixed"] - seg["fixed"]) * sign
+        if not (1e-3 < ahead <= BEHIND_DEPTH):
+            continue
+        if (o["a_min"] - RUN_SLACK <= along <= o["a_max"] + RUN_SLACK
+                and o["z_lo"] - HEIGHT_SLACK <= z <= o["z_hi"] + HEIGHT_SLACK):
+            return True
+    return False
+
+
 def _points_along(a_min: float, a_max: float, spacing: float):
     """Evenly spaced parameter values covering a run, endpoints inset half a step."""
     length = a_max - a_min
@@ -161,11 +222,19 @@ def _seg_point(seg, along_val: float, z: float):
 
 
 def _up_to_z(positions: np.ndarray, up_axis: int) -> np.ndarray:
-    """Permute positions so ``up_axis`` becomes Z, keeping a right-handed frame.
+    """Permute positions so ``up_axis`` becomes Z.
 
     The anchor geometry math is written Z-up (horizontal = axes 0,1; up = 2).
-    Rather than thread an axis through every helper, we rotate the scene into a
-    canonical Z-up frame on the way in and rotate anchors back on the way out.
+    Rather than thread an axis through every helper, the scene is viewed in a
+    canonical Z-up frame on the way in and anchors are permuted back on the way
+    out.
+
+    CORRECTED CLAIM (0.30.0, roadmap 221): this said it kept "a right-handed
+    frame", and that it "rotates" the scene. It does neither. Swapping two
+    axes is a REFLECTION, so every triangle's winding reverses in this view,
+    and a normal taken from a cross product here points into the building.
+    `_exterior_wall_faces` negates its product for that reason; anything else
+    that takes a cross product of these positions must do the same.
     """
     if up_axis == 2:
         return positions
@@ -265,7 +334,8 @@ def generate(scene: Scene, opts: AnchorOptions, seed: int,
                 saved.append((prim, prim.positions))
                 prim.positions = _up_to_z(prim.positions, up_axis)
     try:
-        result = _generate_zup(scene, opts, seed)
+        # both of `_up_to_z`'s permutations swap two axes: the view is a mirror
+        result = _generate_zup(scene, opts, seed, mirrored=up_axis != 2)
     finally:
         if up_axis != 2:
             for prim, pos in saved:
@@ -353,10 +423,16 @@ def _conduit_anchors(segs, opts: AnchorOptions, seed: int) -> list[Anchor]:
         # ground and up past the next storey. The fixture is still named in
         # `tag`; the geometry is described where the geometry is.
         mid_z = base + run / 2.0
+        # ON THE WALL (0.30.0, roadmap 221). DC stands a wall pack
+        # `_WALL_PACK_OUT` (0.15 m) proud of the face, and the run stood out
+        # there with it: a stub in the air from the door head to the pack's
+        # housing. A conduit runs up the wall's face, so it takes the plane
+        # of the segment it belongs to and keeps the fixture's run along it.
+        at = [float(pos[0]), float(pos[1])]
+        at[seg["axis"]] = float(seg["fixed"])
         out.append(Anchor(
             kind="exterior_light",
-            pos=(round(float(pos[0]), 3), round(float(pos[1]), 3),
-                 round(mid_z, 3)),
+            pos=(round(at[0], 3), round(at[1], 3), round(mid_z, 3)),
             normal=(round(n3[0], 3), round(n3[1], 3), round(n3[2], 3)),
             size=round(run, 3),
             tag=aid or "exterior_wall",
@@ -364,10 +440,13 @@ def _conduit_anchors(segs, opts: AnchorOptions, seed: int) -> list[Anchor]:
     return out
 
 
-def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
-    """Compute placement anchors assuming a Z-up scene (canonical frame)."""
+def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int,
+                  mirrored: bool = False) -> list[Anchor]:
+    """Compute placement anchors assuming a Z-up scene (canonical frame).
+    ``mirrored``: the scene's positions are a reflected view of the file
+    (:func:`_up_to_z`)."""
     lo, hi = _visual_aabb(scene)
-    segs = list(_wall_segments(scene))
+    segs = list(_wall_segments(scene, mirrored=mirrored))
     out: list[Anchor] = []
 
     def emit(kind, seg, along_vals, z, normal, size, jitter_scale):
@@ -376,6 +455,8 @@ def _generate_zup(scene: Scene, opts: AnchorOptions, seed: int) -> list[Anchor]:
         tan[seg["along"]] = 1.0          # the direction this wall RUNS
         for i, av in enumerate(along_vals):
             j = (rng.random() - 0.5) * jitter_scale
+            if _buried(seg, av + j, z, segs):
+                continue                     # inside the wall, behind its face
             p = _seg_point(seg, av + j, z)
             out.append(Anchor(kind=kind,
                               pos=(round(float(p[0]), 3), round(float(p[1]), 3),

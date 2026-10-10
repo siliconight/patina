@@ -194,7 +194,7 @@ def _emit_with_segments(segs, opts, seed):
     """
     from patina.mesh import Scene
     real = anchors._wall_segments
-    anchors._wall_segments = lambda scene: iter(segs)
+    anchors._wall_segments = lambda scene, **_k: iter(segs)
     try:
         return anchors._generate_zup(Scene(), opts, seed)
     finally:

@@ -23,14 +23,17 @@ def _lights(*anchors_):
 
 
 def _south_wall():
-    """strip_club_a01's south wall in Patina's canonical frame, where y is the spec's negated."""
-    return {"axis": 1, "along": 0, "normal": np.array([0.0, -1.0]), "fixed": 12.0,
+    """strip_club_a01's south wall in Patina's canonical frame, where y is the spec's negated.
+
+    Its normal is OUTWARD, +y here, since the south face looks to the spec's -y (0.30.0). 0.29.2
+    wrote -y: the inward normal the anchor pass then derived for every wall (roadmap 221)."""
+    return {"axis": 1, "along": 0, "normal": np.array([0.0, 1.0]), "fixed": 12.0,
             "a_min": -17.0, "a_max": 17.0, "z_lo": 0.0, "z_hi": 3.3}
 
 
 def _generate(segs, opts):
     real = anchors._wall_segments
-    anchors._wall_segments = lambda scene: iter(segs)
+    anchors._wall_segments = lambda scene, **_k: iter(segs)
     try:
         return anchors._generate_zup(Scene(), opts, 1999)
     finally:
@@ -70,4 +73,6 @@ def test_the_old_stub_was_what_the_bar_measured():
     assert report["shortened"] == {"conduit_run": 1}
     (stub,) = kept
     assert stub["size"] == 0.27
-    assert stub["pos"][1] == -12.35            # the sign's face plane, 0.2 m off the wall
+    # 0.30.0 stands a conduit on its wall's plane, -12.0 here. 0.29.1 stood this one where the
+    # sign's anchor was, on its face plane at -12.35, 0.2 m off the wall: what 9217 shipped.
+    assert stub["pos"][1] == -12.0
