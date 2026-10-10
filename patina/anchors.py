@@ -213,17 +213,28 @@ def blender_to_canonical(p, up_axis: int) -> tuple:
 
 
 def conduit_targets(light_manifest, up_axis: int,
-                    kinds=("wall_pack", "sign")) -> tuple:
+                    kinds=("wall_pack",)) -> tuple:
     """``((pos, anchor_id), ...)`` for the exterior fixtures conduit runs to.
 
-    DC derives a wall pack over every exterior door and one storefront sign
-    from the real openings, and puts them in ``<name>.lights.json`` already
-    stood proud of the wall face (``_WALL_PACK_OUT``, ``_SIGN_OUT``). Taking
-    those positions as given is deliberate: it means the conduit needs no face
-    math of its own, and no second chance to get a normal backwards.
+    DC derives a wall pack over every exterior door and puts it in
+    ``<name>.lights.json`` already stood proud of the wall face
+    (``_WALL_PACK_OUT``). Taking that position as given is deliberate: it
+    means the conduit needs no face math of its own, and no second chance to
+    get a normal backwards.
 
     Interior kinds (``fluorescent``, ``window``) are not conduit targets --
     nothing runs up an outside wall to a ceiling strip light.
+
+    NOR IS A SIGN (0.29.2, roadmap 220). RETRACTED, kept: ``sign`` was a
+    target until 0.29.1. DC stands a sign's anchor on the sign's FACE,
+    ``_SIGN_OUT`` (0.2 m) proud of the wall, and hangs every sign it derives
+    over a door. The run therefore stood 0.2 m out in the air, and
+    ``openings.apply``, starting it above the door head as it should, left a
+    0.27 m stub from the head to the middle of the lit face, standing through
+    it: the light bar walked on strip_club_a01's door sign in cold runs 9213
+    and 9217, and ordered on all three signed buildings of club_block_014. A
+    cabinet sign is fed through the wall behind it; nothing runs up the
+    outside of the wall to its face.
     """
     if not light_manifest:
         return ()

@@ -217,7 +217,9 @@ _LIGHTS = {
 def test_conduit_targets_are_exterior_fixtures_only():
     """Nothing runs up an outside wall to a ceiling strip light."""
     got = anchors.conduit_targets(_LIGHTS, 1)
-    assert [t[1] for t in got] == ["ext_0_N_pack_1", "ext_0_S_sign"]
+    # 0.29.2: the sign left the list -- a conduit to a sign's FACE stood 0.2 m
+    # off the wall and through the face (tests/test_sign_conduit.py)
+    assert [t[1] for t in got] == ["ext_0_N_pack_1"]
     # positions arrive in the canonical frame: y flips, z is untouched
     assert got[0][0] == (-8.8, -16.15, 2.45)
 

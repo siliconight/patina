@@ -364,9 +364,13 @@ def run(args: argparse.Namespace) -> dict:
             conduits = anchors.conduit_targets(scene.lights, up_axis)
             if not conduits and "exterior_light" in (
                     args.anchor_kinds or anchors.ANCHOR_KINDS):
-                print("[patina] no <name>.lights.json beside this shell: no "
-                      "conduit runs emitted (they run TO a fixture)",
-                      file=sys.stderr)
+                # 0.29.2: with no sign target, a manifest whose only exterior
+                # fixture is a sign orders none too -- and is not missing
+                why = ("no <name>.lights.json beside this shell"
+                       if scene.lights is None
+                       else "no wall pack in <name>.lights.json")
+                print("[patina] " + why + ": no conduit runs emitted (they "
+                      "run TO a fixture)", file=sys.stderr)
         aopts = anchors.AnchorOptions(
             kinds=tuple(args.anchor_kinds) if args.anchor_kinds
             else anchors.ANCHOR_KINDS,
