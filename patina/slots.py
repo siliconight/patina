@@ -178,6 +178,13 @@ class SlotManifest:
             out[s.role] = out.get(s.role, 0) + 1
         return out
 
+    def prop_ids(self) -> frozenset:
+        """The ids of the slots that stand for a prop, not the building (0.31.0,
+        factory roadmap 248). Deli Counter names each slot's greybox node by its
+        id, so these are the props' mesh names too: :func:`surfaces.classify`
+        leaves them out of the building's bounds."""
+        return frozenset(s.slot_id for s in self.slots if s.role == "prop")
+
     def storey_base(self, story: int = 0) -> Optional[float]:
         """A storey's floor plane in Blender Z-up metres, or None if unknown.
 

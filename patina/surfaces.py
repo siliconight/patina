@@ -18,6 +18,10 @@ AABB, matching the bashing-brief buckets that matter most for theming:
 * **roof** — an up-facing face whose centroid sits at the top of the visual
   AABB (within tolerance).
 
+The AABB is the BUILDING's (0.31.0): a mesh the caller names as a prop --
+the CLI names a slots.json's ``prop`` slots -- is left out of it, and never
+reads as exterior wall or roof.
+
 A mesh may still be promoted wholesale by a ``gameplay.json`` surface hint
 (``{"mesh": <name>, "role": ...}``) or by an obvious name token — authored
 intent overrides geometry, and now accepts any :class:`SurfaceRole` value.
@@ -65,11 +69,13 @@ def _face_normals(mesh: Mesh):
         yield prim, fn
 
 
-def _visual_aabb(scene: Scene):
+def _visual_aabb(scene: Scene, skip=frozenset()):
     lo = np.full(3, np.inf)
     hi = np.full(3, -np.inf)
     any_pts = False
     for mesh in scene.visual_meshes():
+        if mesh.name in skip:
+            continue
         for prim in mesh.primitives:
             if prim.vertex_count():
                 lo = np.minimum(lo, prim.positions.min(0))
@@ -78,20 +84,32 @@ def _visual_aabb(scene: Scene):
     return (lo, hi) if any_pts else (np.zeros(3), np.zeros(3))
 
 
-def classify(scene: Scene, up_axis: int = 2) -> None:
+def classify(scene: Scene, up_axis: int = 2, props=frozenset()) -> None:
     """Fill ``prim.face_roles`` for every visual primitive in place.
 
     ``up_axis`` (0=X, 1=Y, 2=Z) is the vertical axis: 2 for legacy Z-up shells,
     1 for DC's Y-up glTF exports. Floor/ceiling/roof read the up axis; the other
     two axes form the horizontal plane the exterior-wall test runs in.
+
+    ``props`` names the meshes that stand for a prop, not the building (0.31.0,
+    factory roadmap 248): the CLI passes a slots.json's ``prop`` slots, whose
+    greybox Deli Counter names by ``slot_id``. Such a mesh is left out of the
+    AABB and never reads as exterior wall or roof; its faces keep the role
+    their normals give, and a hint still wins. A stoop, an awning or a fire
+    escape stands proud of a front, and before this its box WAS the front:
+    on cold run 9303's gs_midrise_a it moved the bound 1.34 m out, the wall
+    stopped reading as exterior, and the anchor pass put the front's coping,
+    base course and curbs on the stack. Leaving a prop out of the AABB alone
+    would not do: the exterior test accepts a face standing BEYOND the bound.
     """
     horiz_axes = [a for a in range(3) if a != up_axis]
     hints = _hinted_roles(scene)
-    lo, hi = _visual_aabb(scene)
+    lo, hi = _visual_aabb(scene, props)
     for mesh in scene.visual_meshes():
         forced = hints.get(mesh.name)
         if forced is None and any(tok in mesh.name.lower() for tok in _TRIM_TOKENS):
             forced = SurfaceRole.TRIM
+        prop = mesh.name in props
         for prim, fn in _face_normals(mesh):
             roles = np.empty(fn.shape[0], dtype=object)
             up = fn[:, up_axis] >= _UP_THRESHOLD
@@ -103,13 +121,15 @@ def classify(scene: Scene, up_axis: int = 2) -> None:
 
             centroids = prim.positions[prim.indices].mean(axis=1)   # (T,3)
 
-            # roof: up-facing at the top of the visual AABB.
+            # roof: up-facing at the top of the visual AABB; never a prop's.
             roof = up & (centroids[:, up_axis] >= hi[up_axis] - _BOUNDARY_TOL)
-            roles[roof] = SurfaceRole.ROOF
+            if not prop:
+                roles[roof] = SurfaceRole.ROOF
 
             # exterior wall: vertical face on the AABB boundary along the
-            # normal's dominant horizontal axis, normal pointing outward.
-            if vertical.any():
+            # normal's dominant horizontal axis, normal pointing outward;
+            # never a prop's.
+            if vertical.any() and not prop:
                 horiz = np.abs(fn[:, horiz_axes])                   # (T,2)
                 which = np.argmax(horiz, axis=1)                    # 0/1 into horiz_axes
                 idx = np.arange(fn.shape[0])

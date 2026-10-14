@@ -199,7 +199,12 @@ def run(args: argparse.Namespace) -> dict:
         result["family"] = family.name
         result["family_colors"] = list(family.colors)
 
-    surfaces.classify(scene, up_axis)
+    # A PROP IS NOT THE BUILDING (0.31.0, factory roadmap 248): a stoop, an
+    # awning or a fire escape greyboxed proud of a wall moved the bounds the
+    # classifier reads, and the wall stopped reading as exterior.
+    surfaces.classify(scene, up_axis,
+                      props=slot_manifest.prop_ids() if slot_manifest is not None
+                      else frozenset())
 
     # Vertical bands (v0.7): material variation by world height. Skin-derived
     # bands win over a theme's declared bands; --no-bands disables. Colours
