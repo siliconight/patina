@@ -3,6 +3,27 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.32.0] - the Godot half is gone
+
+Factory roadmap 20, filed 2026-08 and re-read 2026-10-15 against cold run 9314's package.
+
+### Removed
+- **`godot/`** -- the editor plugin, its dock, `patina_apply.gd` and both copies of `ps1.gdshader`
+  (8 files). Measured before deleting: no tool repo referenced any of them, no package shipped them
+  (9314: no `addons/` directory, 0 `res://addons` references), and their own README still said the
+  half had never been walked in the editor. The shader was the one reader of the vertex-colour
+  channel that took it as lighting; the one reader a package has, Level Factory's
+  `zoo_worldskin.gd`, takes it as albedo on objects and leaves it off on tiles (factory roadmap
+  84). The engine look is Lux's. The offline pass -- vertex nuance, banding, mottle, per-slot
+  variation, auto-UV, anchors, dressing -- is untouched, and `shell.patina.json` keeps its
+  `shader` block for the schema's sake (0.2.0 unchanged); nothing in-engine reads it.
+
+### Fixed
+- **The version the outputs carried was not the release's.** `patina/version.py` said 0.30.0
+  while `VERSION` said 0.31.0, so every 0.31.0 manifest and GLB wrote `generator: "Patina
+  0.30.0"` (cold run 9314's `deli_a01.patina.json` does). Both read 0.32.0 now and
+  `tests/test_version_file.py` pins them together; it fails on 0.31.0's tree.
+
 ## [0.31.0] - a prop is not the building
 
 ### Fixed

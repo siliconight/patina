@@ -22,8 +22,9 @@ from .mesh import Scene, SurfaceRole
 from .surfaces import role_counts
 
 
-# Default PS1 shader parameters (the in-engine half reads these). Tuned to the
-# "minimal / readability-first" principle, not maximal grunge.
+# Default PS1 shader parameters, kept for the manifest's schema. Nothing in-engine
+# reads them since 0.32.0 retired the Godot half; they record the look the pass was
+# tuned to -- "minimal / readability-first", not maximal grunge.
 def default_shader() -> dict:
     return {
         "name": "ps1",

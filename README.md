@@ -17,13 +17,13 @@
 Patina is a separate, optional sibling tool to **Deli Counter**. It takes a Deli
 Counter greybox (`shell.glb` + `shell.gameplay.json`) and applies every step of
 the "look like a PS1-era building" pipeline that can be *honestly automated*,
-then hands the result to Godot ready to render in a PS1 style.
+then hands the result on as a styled `.glb` plus a manifest. The engine look is Lux's.
 
 It does **not** pretend to automate art. Turning a blockout into a
 production-final, hand-modeled, hand-textured building is irreducible creative
 labor. Patina automates the mechanical steps that bracket that labor — vertex
-nuance, box-projection UVs, procedural/posterized textures, and the PS1 render
-setup — and marks the seams where a modeler or texture artist takes over.
+nuance, box-projection UVs and procedural/posterized textures — and marks the
+seams where a modeler or texture artist takes over.
 
 ## The one-line scope
 
@@ -86,14 +86,14 @@ Outputs, next to the input:
 
 * `shell.patina.glb` — styled geometry + vertex colours (+ UVs/textures in
   textured modes).
-* `shell.patina.json` — style manifest the Godot addon reads (shader params,
-  per-surface specs, kit-bash hooks).
+* `shell.patina.json` — style manifest (per-surface specs, kit-bash hooks, and
+  the shader params kept for the schema; nothing in-engine reads them since 0.32.0).
 * `shell.patina.textures/` — generated tiles (textured modes only).
 * `shell.patina.gameplay.json` — the original gameplay.json, re-emitted
   unchanged (Patina is visual-only).
 
-Then in Godot: see [`godot/README.md`](godot/README.md) — enable the addon,
-import the `.glb`, click **Apply PS1 style**.
+Then in the engine: the `.glb` imports as any glTF does, and the look is Lux's. There
+is no Patina addon since 0.32.0 — Level Factory's art pass runs this step for you.
 
 ## CLI
 

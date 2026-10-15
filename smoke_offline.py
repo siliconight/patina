@@ -154,7 +154,7 @@ def run(build_dir: str, zoo_repo: str | None) -> int:
         print(f"SMOKE TEST FAILED — {len(_fails)} check(s): {', '.join(_fails)}")
         return 1
     print("SMOKE TEST PASSED — the offline pipeline holds end to end.")
-    print("Next: the Blender/Godot walk (smoke_walk.ps1) for the in-engine half.")
+    print("Next: the Blender/Godot walk (smoke_walk.ps1), which opens Lux on the result.")
     return 0
 
 

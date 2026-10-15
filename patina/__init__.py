@@ -1,7 +1,7 @@
 """Patina — an automated PS1-era styling pass for Deli Counter greyboxes.
 
-Public, stable surface for the offline asset pass. The Godot side lives under
-``godot/`` and is wired up in-engine, not imported here.
+Public, stable surface for the offline asset pass. There is no Godot side since
+0.32.0: the engine look is Lux's, and the styled ``.glb`` imports as any glTF does.
 """
 
 from .version import __version__, DEFAULT_SEED, MANIFEST_SCHEMA_VERSION

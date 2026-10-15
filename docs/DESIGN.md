@@ -13,7 +13,7 @@ automatable ones and leaves the two craft steps to humans:
 3. Mesh art pass (hand-modeling) — human craft (Patina leaves kit-bash hooks).
 4. UV unwrap + textures — **Patina partial:** auto box-UV + procedural stand-in;
    `byo` mode is the seam for real hand-painted textures.
-5. PS1 render look (Godot shader) — **Patina (YES).**
+5. Engine render look — **Lux, not Patina** (the Godot half was retired in 0.32.0).
 
 ## Thesis (inherited from Deli Counter)
 
@@ -32,9 +32,9 @@ Two halves mirroring Deli Counter:
 * **Offline asset pass (Python)** — `patina/`. Reads the `.glb` + gameplay.json,
   runs `nuance → uvproject → palette → decals` under a `--theme` preset, writes
   `shell.patina.glb` + `shell.patina.json`. Fully verifiable without an engine.
-* **Godot addon (GDScript)** — `godot/addon/patina/`. Imports the styled `.glb`,
-  reads the manifest, assigns the PS1 shader + material params per surface, sets
-  white ambient + fog. First-run-in-engine.
+* **Godot addon (GDScript)** — retired in 0.32.0. It was never walked in the engine, no
+  tool consumed it and no package shipped it; the vertex-colour channel it read as lighting
+  is read as albedo by Level Factory's `zoo_worldskin.gd`, and the engine look is Lux's.
 
 The seam between them is a single styled `.glb` plus the small JSON manifest.
 
