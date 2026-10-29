@@ -374,6 +374,23 @@ EDGE_ONLY_ASSETS = ("weed_tuft", "rubble_frag")
 OPEN_KINDS = ("ground",)
 OPEN_EXPOSURES = ("play_space",)
 GATHER_KINDS = ("wall_base", "sidewalk")
+#: A SIDEWALK'S DEBRIS LIES AT ITS TWO EDGES (0.37.0, the factory's roadmap 324). The slice's sidewalks carried the
+#: densest dressing on the level -- 1,500 pieces on 3,315 m2, 45 per 100 m2 -- spread evenly across the walking
+#: surface (the factory's docs/findings/slice_look/, slice 4). On a sidewalk it gathers against the building line and
+#: the kerb and the middle is walked clean. A sidewalk zone is a strip: a candidate survives with a probability that
+#: falls off with its distance to the nearer LONG edge -- the kerb or the frontage; the short ends are where Lot cut
+#: the strip, and are not edges.
+STRIP_KINDS = ("sidewalk",)
+STRIP_FALLOFF_M = 0.6
+STRIP_FLOOR = 0.12
+
+
+def strip_edge_distance(point, aabb) -> float:
+    """Distance from a point to the nearer long edge of a strip's rectangle."""
+    x, y = point
+    if (aabb[3] - aabb[0]) >= (aabb[4] - aabb[1]):          # runs along x: its long edges are y0 and y1
+        return max(0.0, min(y - aabb[1], aabb[4] - y))
+    return max(0.0, min(x - aabb[0], aabb[3] - x))
 
 
 def _rect_distance(point, aabb) -> float:
@@ -567,8 +584,14 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
         spent = 0.0
         is_open = (zone.get("kind") in OPEN_KINDS and zone.get("exposure_class") in OPEN_EXPOSURES
                    and density != "very_high" and bool(gather))
+        is_strip = zone.get("kind") in STRIP_KINDS
         for i, (x, y) in enumerate(points):
             pick_from = usable
+            if is_strip:
+                d = strip_edge_distance((x, y), zone["aabb"])
+                if rng.random() >= max(STRIP_FLOOR, math.exp(-d / STRIP_FALLOFF_M)):
+                    thinned += 1
+                    continue
             if is_open:
                 d = edge_distance((x, y), gather)
                 if rng.random() >= max(EDGE_FLOOR, math.exp(-d / EDGE_FALLOFF_M)):
@@ -728,7 +751,8 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
             "over_instance_budget": bool(instance_budget is not None
                                          and len(orders) > instance_budget),
             "dressable_area_m2": round(dressable, 2),
-            # open-ground candidates thinned away from the edges that gather debris (0.34.0)
+            # candidates thinned away from the edges that gather debris: open ground (0.34.0), a sidewalk's
+            # middle (0.37.0)
             "thinned_open_ground": thinned,
             "instances_per_m2": round(len(orders) / dressable, 4)
             if dressable > 0 else 0.0,

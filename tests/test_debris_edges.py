@@ -71,3 +71,25 @@ def test_nothing_is_thinned_where_no_edge_is_declared_or_the_zone_is_an_edge():
     s["exclusions"] = []
     assert S.plan(s, _catalogue(), site_id="t", source="t", seed=9104, instance_budget=None,
                   tri_budget=None)["cost"]["thinned_open_ground"] == 0
+
+
+def _sidewalk_ratio():
+    zones = [zone("sw", "environmental_edge", "high", (0.0, 0.0, 40.0, 3.0), kind="sidewalk")]
+    m = S.plan(surfaces(zones, (), tops=(slab("Ground", (20.0, 1.5), (40.0, 3.0), 0.0),)), _catalogue(),
+               site_id="t", source="t", seed=9104, instance_budget=None, tri_budget=None)
+    ys = [o["pos"][1] for o in m["orders"]]
+    edge = sum(1 for y in ys if y <= 0.4 or y >= 2.6) / (2 * 0.4 * 40.0)
+    middle = sum(1 for y in ys if 1.1 <= y <= 1.9) / (0.8 * 40.0)
+    return edge / max(middle, 1e-9), m
+
+
+def test_a_sidewalks_debris_lies_at_its_kerb_and_its_building_line(monkeypatch):
+    """FAILS ON 0.36.0: a sidewalk's debris lay evenly across its walking surface. The same plan with the rule and
+    without it: per square metre, the 0.4 m at each long edge against the middle, at least twice the ratio. (The
+    planner clumps its candidates, so a single strip's absolute ratio is the clumps' as much as the rule's.)"""
+    with_rule, m = _sidewalk_ratio()
+    monkeypatch.setattr(S, "STRIP_KINDS", ())
+    without, _m = _sidewalk_ratio()
+    assert m["cost"]["thinned_open_ground"] > 0
+    assert with_rule > 2.0 * without, (with_rule, without)
+    assert S.strip_edge_distance((39.9, 1.5), [0.0, 0.0, 0.0, 40.0, 3.0, 0.0]) == pytest.approx(1.5)

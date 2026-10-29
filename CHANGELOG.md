@@ -3,6 +3,20 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.37.0] - a sidewalk's debris lies at its kerb and its building line
+
+The factory's roadmap 324. The vertical slice's sidewalks carried the densest dressing on the level -- 1,500 pieces
+on 3,315 m2, 45 per 100 m2 -- spread evenly across the walking surface (the factory's `docs/findings/slice_look/`,
+slice 4).
+
+### Changed
+- **`surface_dressing.plan`**: in a `sidewalk` zone a candidate survives with probability `max(STRIP_FLOOR,
+  exp(-d / STRIP_FALLOFF_M))` (0.12, 0.6 m), `d` its distance to the strip's nearer LONG edge -- the kerb or the
+  frontage (`strip_edge_distance`); the short ends, where Lot cut the strip, are not edges. Counted with the open
+  ground's in `cost.thinned_open_ground`. Slice 5: the sidewalks 1,500 -> 469 pieces; within 0.4 m of an edge 18 % ->
+  39 %, the middle band 322 -> 48; priced against slice 4, draws +0. Tests: tests/test_debris_edges.py, the same plan
+  with and without the rule (fails on 0.36.0).
+
 ## [0.36.0] - a band at the roof line, and every band round its corners
 
 The factory's roadmap 324; the walker, 2026-10-29: "detail and placement of hard surfaces". The vertical slice's
