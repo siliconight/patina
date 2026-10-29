@@ -83,6 +83,8 @@ _ZOO_CROSS = {                        # zoo_keeper/core/dressing.py _COVER
     "pilaster": 0.12, "frame": 0.12,
     # 0.25.0: a downspout is a 3-inch pipe, and runs up the wall like a conduit
     "downspout": 0.076,
+    # a string course declares its height in size2; its span is its slot's run
+    "string_course": 0.40,
 }
 
 #: Zoo does not use `size` as the span. It SCALES it:

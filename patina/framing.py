@@ -518,6 +518,112 @@ def scupper_sides(manifest: SlotManifest) -> dict:
     return out
 
 
+#: A STRING COURSE AT EVERY FLOOR LINE (the factory's roadmap 324). The walker, 2026-10-29: "Things still look
+#: simple, and computer made", and of the target, "the detail and placement of hard surfaces". Deli Counter centres
+#: a storey's walls on the footprint line and stops them under the slab above, and the slab stops at that line: so
+#: between two storeys a facade carries a 0.3 m band of slab edge recessed half a wall -- a dark groove at every floor
+#: of every building that is not an Empty (seed 9082's bank: walls 0 -> 3.3, 3.6 -> 6.9; the factory's
+#: docs/findings/slice_look/). A commercial facade marks that line with a string course: a band proud of the wall
+#: over the floor's edge. One a wall slot of the storey above, so a band that would cross an opening's keep-out is
+#: refused alone; `size2` = [run, height], Zoo builds it `STRING_PROUD` out of the face.
+#: NOT ON AN EMPTY: its walls run the full storey with no band between (Deli Counter 0.175.2), and its stone
+#: lintels and sills are its language, the walker's to change.
+STRING_OVER = 0.05       # the band laps the walls above and below the slab by this, each side
+STRING_MIN_GAP = 0.05    # a gap smaller than this is not a slab band (an Empty's, a wall run full height)
+
+
+def string_course_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[dict]:
+    """One ``string_course`` per exterior wall or opening slot standing on a slab band above grade."""
+    if any(s.glazing == "facade" for s in manifest.slots):
+        return []
+    uv = _uv(regions, "base_course")
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    faces = [s for s in manifest.slots if s.dims and str(s.slot_id).startswith("ext_")
+             and s.story is not None and (s.role == "wall" or s.role in _FACE_ROLES)]
+    if not faces:
+        return []
+    ground = min(_base_z(s) for s in faces if int(s.story) == 0) if any(int(s.story) == 0 for s in faces) else None
+    tops, bases = {}, {}
+    for s in faces:
+        key = (_side(wall_frame(s, center, thick_m)), int(s.story))
+        tops[key] = max(tops.get(key, -1e9), _base_z(s) + s.size()[2])
+        if s.role == "wall":
+            bases[key] = min(bases.get(key, 1e9), _base_z(s))
+    orders = []
+    for s in sorted(faces, key=lambda s: s.slot_id):
+        frame = wall_frame(s, center, thick_m)
+        side, k = _side(frame), int(s.story)
+        below = tops.get((side, k - 1))
+        z1 = _base_z(s)
+        if below is None or z1 - below < STRING_MIN_GAP or (ground is not None and z1 <= ground + 0.05):
+            continue
+        # a slot that starts above its storey's floor (an opening set on its sill) stands on no floor line
+        if abs(z1 - bases.get((side, k), z1)) > 1e-3:
+            continue
+        height = z1 - below + 2.0 * STRING_OVER
+        run = frame[0]
+        pos, n = _face(s, 0.0, (z1 + below) / 2.0, frame)
+        rng = rng_for(seed, "string_course", s.slot_id)
+        orders.append({
+            "anchor_kind": "floor_line",
+            "cover": "string_course",
+            "collision": "none",
+            "trim_piece": "base_course",
+            "uv_region": uv,
+            "slot_id": s.slot_id,
+            "pos": pos, "normal": n,
+            "size": round(run, 3),
+            "size2": [round(run, 3), round(height, 3)],
+            "seed_offset": int(rng.integers(0, 1_000_000)),
+        })
+    return _join_bands(orders, manifest)
+
+
+def _join_bands(orders: list[dict], manifest: SlotManifest) -> list[dict]:
+    """Bands that meet end to end, on one plane at one height, as one run -- after each slot's band has met the
+    opening keep-out alone, so an opening splits a run and never drops it.
+
+    One band a slot left a dark tick at every 2 m joint on the first slice that carried them: each band's ends are
+    bevelled by the cover's own bevel, and the recessed slab edge behind showed through the notch (the factory's
+    docs/findings/slice_look/, slice 3). A run has no joint to show."""
+    from . import openings as _openings
+    boxes = _openings.keep_out_boxes(manifest)
+    keep = [o for o in orders if not (boxes and _openings.hits(o, boxes))]
+    groups: dict = {}
+    for o in keep:
+        nx, ny = o["normal"][0], o["normal"][1]
+        ax = 0 if abs(nx) < 0.5 else 1                       # the axis the band runs along
+        key = (round(nx), round(ny), round(o["pos"][1 - ax], 3), round(o["pos"][2], 3), o["size2"][1])
+        groups.setdefault(key, []).append((ax, o))
+    out = []
+    for key in sorted(groups):
+        items = sorted(groups[key], key=lambda it: it[1]["pos"][it[0]] - it[1]["size2"][0] / 2.0)
+        run = None
+        for ax, o in items:
+            a0 = o["pos"][ax] - o["size2"][0] / 2.0
+            a1 = o["pos"][ax] + o["size2"][0] / 2.0
+            if run is not None and a0 - run["a1"] <= 0.01:
+                run["a1"] = max(run["a1"], a1)
+                run["ids"].append(o["slot_id"])
+                continue
+            if run is not None:
+                out.append(_band_run(run))
+            run = {"ax": ax, "a0": a0, "a1": a1, "o": o, "ids": [o["slot_id"]]}
+        if run is not None:
+            out.append(_band_run(run))
+    return out
+
+
+def _band_run(run: dict) -> dict:
+    o = dict(run["o"])
+    length = round(run["a1"] - run["a0"], 3)
+    pos = list(o["pos"])
+    pos[run["ax"]] = round((run["a0"] + run["a1"]) / 2.0, 4)
+    o.update(pos=pos, size=length, size2=[length, o["size2"][1]], slot_ids=list(run["ids"]))
+    return o
+
+
 def _is_parapet(slot) -> bool:
     """A parapet tile's slot (Deli Counter >= 0.177.0): `parapet_<side>...`."""
     return str(slot.slot_id).startswith("parapet_")

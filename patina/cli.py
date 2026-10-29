@@ -464,6 +464,9 @@ def run(args: argparse.Namespace) -> dict:
                 # the roofline strips along its top
                 panels += framing.coping_orders(
                     slot_manifest, regions, seed=args.seed)
+                # and a string course at every floor line
+                panels += framing.string_course_orders(
+                    slot_manifest, regions, seed=args.seed)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

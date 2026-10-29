@@ -3,6 +3,24 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.35.0] - a string course at every floor line
+
+The factory's roadmap 324; the walker, 2026-10-29: "Things still look simple, and computer made". Deli Counter centres
+a storey's walls on the footprint line and stops them under the slab above, and the slab stops at that line: between
+two storeys every facade of a building that is not an Empty carried the slab's edge recessed half a wall, a dark
+groove at every floor (the vertical slice's bank, walls 0 -> 3.3 and 3.6 -> 6.9; the factory's
+`docs/findings/slice_look/`).
+
+### Added
+- **`framing.string_course_orders`**: a band at every floor line above grade, over the slab band and `STRING_OVER`
+  (5 cm) past it each way, for every exterior wall or opening slot that stands on its storey's floor (an opening set
+  on its sill stands on none). Each slot's band meets the opening keep-out alone; the survivors that meet end to end
+  on one plane at one height are joined into one run (`_join_bands`), so an opening splits a run and never drops
+  it -- one band a slot left a dark tick at every 2 m joint, the bevelled ends showing the groove behind. Not on an
+  Empty, whose walls run full height and whose lintels and sills are its language. Zoo (>= 1.148.0) builds it in the
+  stone trim. Slice 3b: the bank 64 slots' bands, the card shop's split at its openings; draws median +3, largest
+  +10.5 against slice 2 (control floor 21). Tests: tests/test_string_courses.py (fails on 0.34.0).
+
 ## [0.34.0] - debris where it gathers, and a roof that drains through its parapet
 
 The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and
