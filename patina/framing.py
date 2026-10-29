@@ -657,3 +657,189 @@ def pilaster_orders(manifest: SlotManifest, regions: list, *, seed: int,
             "seed_offset": int(rng.integers(0, 1_000_000)),
         })
     return orders
+
+
+#: A PARAPET'S COPING (0.33.0, the factory's roadmap 324). The walker,
+#: 2026-10-28: "less about realistic textures and more about the 3d shape
+#: themselves". A parapet's top was capped by the roofline anchors' 2 m
+#: `edge_strip`s, set 2.5 m apart with jitter and centred on the wall's OUTER
+#: face -- 64 of them on `bank_branch_a02`, a broken 6 x 10 cm stick half off
+#: the wall, a hairline at 30 m. A coping is one piece the length of its run,
+#: over the whole wall, overhanging both faces so it throws a shadow line on
+#: the facade and on the roof: built from the parapet's own slots, as a
+#: gutter is from the eave's.
+#:
+#: The overhang each face, metres -- the window sill's (Zoo 1.145.0
+#: `WINDOW_SILL_PROUD`), so the building's two ledges agree. Its height is
+#: Zoo's (`core.dressing.COPING_H`): Patina plans the footprint, Zoo the solid.
+COPING_OVER = 0.05
+#: An `edge_strip` this near a coping's top plane, under its footprint, is the
+#: roofline cap the coping replaces (:func:`drop_capped_edge_strips`). Its
+#: anchor stands at the top of the wall it caps: measured 0 m off on
+#: `bank_branch_a02`. The tolerance is the strip's own half-height and more.
+COPING_CAP_TOL = 0.15
+#: Each parapet side's outward normal and the `rot_y` Deli Counter gives it
+#: (`deli_counter.py` `_record_parapet_slot`): `fit.dims` is (run, thickness,
+#: height) in the slot's own frame on every side.
+_PARAPET_OUT = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}
+_PARAPET_ROT = {"N": 0.0, "E": 90.0, "S": 180.0, "W": 270.0}
+
+
+def _parapet_side(slot) -> str:
+    """The side a parapet tile stands on, from its id, checked against its
+    `rot_y`. A tile whose two disagree is a shape this was not written
+    against, and raises rather than capping the wrong face."""
+    side = str(slot.slot_id)[len("parapet_"):][:1]
+    if side not in _PARAPET_OUT:
+        raise ValueError("parapet slot %r names no side" % slot.slot_id)
+    turn = (float(slot.rot_y) - _PARAPET_ROT[side] + 180.0) % 360.0 - 180.0
+    if abs(turn) > 0.5:
+        raise ValueError("parapet slot %r: rot_y %s is not side %s's %s"
+                         % (slot.slot_id, slot.rot_y, side, _PARAPET_ROT[side]))
+    return side
+
+
+def _parapet_runs(tiles: list) -> list[dict]:
+    """One side's tiles joined into runs: tiles that meet end to end, on one
+    line, one thickness and one top, are one run. A gap or a step starts the
+    next."""
+    items = []
+    for s in tiles:
+        side = _parapet_side(s)
+        run, thick, h = s.size()
+        ax = 0 if side in ("N", "S") else 1
+        c = float(s.translation[ax])
+        items.append({"side": side, "ax": ax,
+                      "a0": c - run / 2.0, "a1": c + run / 2.0,
+                      "fixed": float(s.translation[1 - ax]),
+                      "thick": thick, "top": s.base_z() + h,
+                      "ids": [s.slot_id]})
+    items.sort(key=lambda it: (round(it["fixed"], 3), it["a0"]))
+    runs = []
+    for it in items:
+        cur = runs[-1] if runs else None
+        if (cur is not None and abs(it["a0"] - cur["a1"]) <= 0.002
+                and abs(it["fixed"] - cur["fixed"]) <= 0.001
+                and abs(it["thick"] - cur["thick"]) <= 0.001
+                and abs(it["top"] - cur["top"]) <= 0.001):
+            cur["a1"] = it["a1"]
+            cur["ids"].append(it["ids"][0])
+        else:
+            runs.append(dict(it, ids=list(it["ids"])))
+    return runs
+
+
+def coping_orders(manifest: SlotManifest, regions: list, *, seed: int,
+                  over: float = COPING_OVER) -> list[dict]:
+    """One ``coping`` per parapet run (Deli Counter >= 0.177.0's parapet slots).
+
+    THE CORNERS. Deli Counter gives a parapet's corners to its N and S runs
+    (`_parapets`, "THE CORNERS BELONG TO N/S"): E and W stand between their
+    inner faces. The copings follow: an N or S coping runs ``over`` past the
+    corner, so the outer corner is capped round both faces, and an E or W
+    coping stops ``over`` short of the N and S inner faces, where their
+    roof-side overhang already is. The two abut; nothing is capped twice.
+
+    NOT PAST AN EMPTY'S PARTY WALL. On an Empty -- a shell any of whose slots
+    carries `glazing: "facade"` -- a face with no window, door or breach is a
+    party wall (:func:`gutter_orders`), and the house beside it stands on the
+    other side of that face. The party coping does not overhang it, and the
+    front and back copings do not run past it: two houses of one height meet
+    coping to coping at the lot line. A free-standing building overhangs
+    every face.
+    """
+    parapets = [s for s in manifest.slots if _is_parapet(s) and s.dims]
+    if not parapets:
+        return []
+    uv = _uv(regions, "roof_edge")
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    empty = any(s.glazing == "facade" for s in manifest.slots)
+    faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
+             if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
+
+    def exposed(side):
+        return not empty or _PARAPET_OUT[side] in faced
+
+    by_story: dict = {}
+    for s in parapets:
+        by_story.setdefault(s.story, {}).setdefault(_parapet_side(s), []).append(s)
+    orders = []
+    for story in sorted(by_story, key=lambda k: (k is None, k or 0)):
+        runs = {side: _parapet_runs(tiles) for side, tiles in by_story[story].items()}
+        ns = runs.get("N", []) + runs.get("S", [])
+        lo_x = min((r["a0"] for r in ns), default=None)
+        hi_x = max((r["a1"] for r in ns), default=None)
+        n_inner = [r["fixed"] - r["thick"] / 2.0 for r in runs.get("N", [])]
+        s_inner = [r["fixed"] + r["thick"] / 2.0 for r in runs.get("S", [])]
+        for side in ("N", "E", "S", "W"):
+            for r in runs.get(side, []):
+                e0, e1 = r["a0"], r["a1"]
+                if side in ("N", "S"):
+                    if exposed("W") and lo_x is not None and abs(e0 - lo_x) <= 0.001:
+                        e0 -= over
+                    if exposed("E") and hi_x is not None and abs(e1 - hi_x) <= 0.001:
+                        e1 += over
+                else:
+                    if any(abs(e0 - y) <= 0.001 for y in s_inner):
+                        e0 += over
+                    if any(abs(e1 - y) <= 0.001 for y in n_inner):
+                        e1 -= over
+                if e1 - e0 <= 0.01:
+                    continue
+                out_over = over if exposed(side) else 0.0
+                width = r["thick"] + over + out_over
+                outward = _PARAPET_OUT[side][1 - r["ax"]]
+                pos = [0.0, 0.0, round(r["top"], 3)]
+                pos[r["ax"]] = round((e0 + e1) / 2.0, 4)
+                pos[1 - r["ax"]] = round(r["fixed"] + (out_over - over) / 2.0 * outward, 4)
+                tangent = [1.0, 0.0, 0.0] if r["ax"] == 0 else [0.0, 1.0, 0.0]
+                length = round(e1 - e0, 4)
+                rng = rng_for(seed, "coping", r["ids"][0])
+                orders.append({
+                    "anchor_kind": "parapet_coping",
+                    "cover": "coping",
+                    "collision": "none",
+                    "trim_piece": "roof_edge",
+                    "uv_region": uv,
+                    "slot_id": r["ids"][0],
+                    "slot_ids": list(r["ids"]),
+                    "pos": pos, "normal": [0.0, 0.0, 1.0], "tangent": tangent,
+                    "size": length,
+                    "size2": [length, round(width, 4)],
+                    "seed_offset": int(rng.integers(0, 1_000_000)),
+                })
+    return orders
+
+
+def drop_capped_edge_strips(orders: list[dict]) -> tuple[list[dict], int]:
+    """``(kept, dropped)``: the roofline ``edge_strip``s a ``coping`` replaces.
+
+    The roofline anchors come from the shell's geometry (`anchors`), know
+    nothing of slots, and stand at the top of every wall plane -- which on a
+    parapet is the coping's line. A strip under a coping's footprint and
+    within :data:`COPING_CAP_TOL` of its top plane is dropped; one anywhere
+    else (a building with no parapet, a lower wing) is kept.
+    """
+    boxes = []
+    for o in orders:
+        if o.get("cover") != "coping":
+            continue
+        length, width = (float(v) for v in o["size2"][:2])
+        along_x = abs(float((o.get("tangent") or (1.0, 0.0, 0.0))[0])) > 0.5
+        hx, hy = (length, width) if along_x else (width, length)
+        px, py, pz = (float(v) for v in o["pos"])
+        boxes.append((px - hx / 2.0 - 0.01, px + hx / 2.0 + 0.01,
+                      py - hy / 2.0 - 0.01, py + hy / 2.0 + 0.01, pz))
+    if not boxes:
+        return list(orders), 0
+    kept, dropped = [], 0
+    for o in orders:
+        if o.get("cover") == "edge_strip":
+            x, y, z = (float(v) for v in o["pos"])
+            if any(x0 <= x <= x1 and y0 <= y <= y1 and abs(z - top) <= COPING_CAP_TOL
+                   for x0, x1, y0, y1, top in boxes):
+                dropped += 1
+                continue
+        kept.append(o)
+    return kept, dropped

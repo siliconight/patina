@@ -3,6 +3,26 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.33.0] - a parapet has a coping
+
+The factory's roadmap 324; the walker, 2026-10-28: "less about realistic textures and more about the 3d shape
+themselves", and on the window frames that started it, "keep the aluminium, keep going on the edges". A parapet's top
+was capped by the roofline anchors' `edge_strip`s: 2 m strips set 2.5 m apart with jitter and centred on the wall's
+OUTER face, 64 of them on seed 9082's `bank_branch_a02` -- a broken stick half off the wall, a hairline at 30 m.
+
+### Added
+- **`framing.coping_orders`**: one `coping` a parapet run, from Deli Counter's `parapet_*` slots (>= 0.177.0), its
+  tiles joined into runs. Over the whole wall and `COPING_OVER` (5 cm, the window sill's) past both faces; N and S
+  run past the corners, E and W stop at their roof-side overhang, so the ring is capped once with no overlap. On an
+  Empty a face with no opening is a party wall: nothing overhangs it and nothing runs past it. `size2` is [length,
+  width] in plan; Zoo (>= 1.146.0) picks the height. No flag: the parapet slot is the opt-in.
+- **`framing.drop_capped_edge_strips`**: the roofline `edge_strip`s under a coping, within 0.15 m of its top, are
+  dropped, and the manifest says how many (`superseded`). A building with no parapet keeps its strips.
+
+### Changed
+- **`coping` is exempt from the opening keep-out** (`openings.EXEMPT`): it lies on a solid wall no opening passes
+  through, and its `size2` is a plan, not the (span, height) the rule measures.
+
 ## [0.32.1] - the MIT licence travels
 
 ### Changed

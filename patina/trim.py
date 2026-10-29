@@ -192,6 +192,9 @@ def dressing_manifest(anchors: list, regions: list[TrimRegion], *, seed: int,
     orders = dressing_orders(anchors, regions, seed=seed)
     if extra_orders:
         orders = orders + list(extra_orders)
+    # 0.33.0: a parapet's coping replaces the roofline strips along its top
+    from . import framing
+    orders, capped = framing.drop_capped_edge_strips(orders)
     keep_out_report = None
     if keep_out:
         from . import openings
@@ -215,4 +218,6 @@ def dressing_manifest(anchors: list, regions: list[TrimRegion], *, seed: int,
         out["building_id"] = building_id
     if keep_out_report is not None:
         out["keep_out"] = keep_out_report
+    if capped:
+        out["superseded"] = {"edge_strip": capped}
     return out

@@ -460,6 +460,10 @@ def run(args: argparse.Namespace) -> dict:
                 # 0.29.0: and the TV antenna and satellite dish on its roof
                 panels += framing.roof_fixture_orders(
                     slot_manifest, regions, seed=args.seed)
+                # 0.33.0: and a coping on every parapet run, which replaces
+                # the roofline strips along its top
+                panels += framing.coping_orders(
+                    slot_manifest, regions, seed=args.seed)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

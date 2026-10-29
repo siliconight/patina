@@ -55,6 +55,14 @@ A recipe `dress_from_manifest(dressing_json)` that, per order:
    - `curb` (ground_edge) — a low ground-meet strip.
    - `conduit_run` (exterior_light) — a thin conduit up the wall to the light,
      from the `conduit` region.
+   - `coping` (parapet_coping, 0.33.0) — a parapet run's cap, one order a run
+     from Deli Counter's `parapet_*` slots: `pos` is the centre of its plan on
+     the parapet's top, `tangent` the run, `size2` = [length, width] in plan
+     with the overhang each face and the corners already in it. Zoo picks the
+     height. The roofline `edge_strip`s under it are dropped
+     (`superseded` in the manifest). The later facade-kit kinds (`gutter_run`,
+     `downspout`, `pilaster`, `frame`, an Empty's fixtures) are documented in
+     `patina/framing.py` and Zoo's `recipes/dress_cover.py`.
 3. UV-maps the mesh to `uv_region` on `trim_sheet` (the atlas is already
    authored; the recipe only assigns UVs).
 4. Marks the mesh **`collision: none`** (the order says so explicitly) — the DC
