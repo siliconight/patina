@@ -465,8 +465,12 @@ def run(args: argparse.Namespace) -> dict:
                 panels += framing.coping_orders(
                     slot_manifest, regions, seed=args.seed)
                 # and a string course at every floor line
-                panels += framing.string_course_orders(
+                bands = framing.string_course_orders(
                     slot_manifest, regions, seed=args.seed)
+                panels += bands
+                # and quoins up a civic building's corners, clear of the bands (0.38.0)
+                panels += framing.quoin_orders(
+                    slot_manifest, regions, seed=args.seed, bands=bands)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

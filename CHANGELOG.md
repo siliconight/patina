@@ -3,6 +3,25 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.38.0] - quoins up a civic building's corners
+
+The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and
+computer made", and of the target, "detail and placement of hard surfaces". The slice's bank had bands at its floor
+lines and roof line and plain corners between them: the stone stopped where the walls met.
+
+### Added
+- **`framing.quoin_orders`**: on a building whose id carries one of `CIVIC_WORDS` (a bank, a credit union, a
+  courthouse, a library, a post office...) and that is not an Empty, a column of dressed blocks up each outside
+  corner -- `QUOIN_H` tall with a `QUOIN_JOINT` between, alternately `QUOIN_LONG` and `QUOIN_SHORT` along each face,
+  the long face swapping at every course, as a laid quoin does -- in the stone trim the string course is
+  (`string_course` orders with `anchor_kind` "quoin"), wrapped round the corner by the band's own rule, and a block
+  within `QUOIN_BAND_CLEAR` of a band left out so the two do not overlap. A pair either half of which meets a
+  keep-out (an opening, a downspout) is dropped whole. The CLI emits them after the string courses, which they read.
+  On the slice (the factory's `docs/findings/slice_look/`, slice 8): bank_branch_a02 136 blocks over 17 courses, the
+  card shop none; priced against slice 7, draws median +0, largest +2 -- the blocks merge into the side's
+  string-course mesh; the frame time was read while Deli Counter's library gate ran, the controls 1.5 ms apart, so
+  its median +0.08 ms says nothing either way. Tests: tests/test_quoins.py (fails on 0.37.0).
+
 ## [0.37.0] - a sidewalk's debris lies at its kerb and its building line
 
 The factory's roadmap 324. The vertical slice's sidewalks carried the densest dressing on the level -- 1,500 pieces

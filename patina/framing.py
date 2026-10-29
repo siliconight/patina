@@ -715,6 +715,85 @@ def _band_run(run: dict) -> dict:
     return o
 
 
+#: QUOINS AT A CIVIC BUILDING'S CORNERS (0.38.0, the factory's roadmap 324). The walker's comps, 2026-10-29: a bank
+#: reads as a bank from 50 m -- "an architectural language per building type" (the factory's
+#: docs/findings/slice_look/). The slice's bank read as a two-storey commercial box with two cream bands. Quoins --
+#: dressed stone blocks at the outside corners, alternately long and short on the two faces -- are what makes a civic
+#: front read solid and deliberate. Each block on each face is a short `string_course` in the stone trim (Zoo builds it
+#: as it builds the bands), closed round the corner by the bands' rule (`_corner_bands`): the N or S block runs on past
+#: the side face by the band's projection, the E or W block stops at its back. A block within `QUOIN_BAND_CLEAR` of a
+#: band is left out -- both stand `_BAND_PROUD` from the face, and where they crossed their fronts would be one plane.
+CIVIC_WORDS = ("bank", "credit", "courthouse", "landmark", "municipal", "library", "post_office")
+QUOIN_H = 0.32
+QUOIN_JOINT = 0.03
+QUOIN_LONG = 0.62
+QUOIN_SHORT = 0.36
+QUOIN_BAND_CLEAR = 0.05
+
+
+def quoin_orders(manifest: SlotManifest, regions: list, *, seed: int, bands=()) -> list[dict]:
+    """Quoins up every outside corner of a civic building that is not an Empty, as `string_course` orders."""
+    bid = str(manifest.building_id or "").lower()
+    if not any(w in bid for w in CIVIC_WORDS) or any(s.glazing == "facade" for s in manifest.slots):
+        return []
+    from . import openings as _openings
+    uv = _uv(regions, "base_course")
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    faces = [s for s in manifest.slots if s.dims and str(s.slot_id).startswith("ext_")
+             and s.story is not None and (s.role == "wall" or s.role in _FACE_ROLES)]
+    if not faces:
+        return []
+    planes: dict = {}
+    for s in faces:
+        frame = wall_frame(s, center, thick_m)
+        pos, _n = _face(s, 0.0, 0.0, frame)
+        key = _side(frame)
+        planes.setdefault(key, []).append(pos[0] if key[0] else pos[1])
+    planes = {k: sorted(v)[len(v) // 2] for k, v in planes.items()}
+    if not all(k in planes for k in ((0, 1), (0, -1), (1, 0), (-1, 0))):
+        return []
+    ground_floor = [s for s in faces if int(s.story) == 0] or faces
+    ground = min(_base_z(s) for s in ground_floor)
+    top = max(_base_z(s) + s.size()[2] for s in faces)
+    clear = [(b["pos"][2] - b["size2"][1] / 2.0 - QUOIN_BAND_CLEAR, b["pos"][2] + b["size2"][1] / 2.0 + QUOIN_BAND_CLEAR)
+             for b in bands]
+    boxes = _openings.keep_out_boxes(manifest)
+    n_y, s_y, e_x, w_x = planes[(0, 1)], planes[(0, -1)], planes[(1, 0)], planes[(-1, 0)]
+    orders = []
+    z, k = ground, 0
+    while z + QUOIN_H <= top + 1e-6:
+        zc = z + QUOIN_H / 2.0
+        if not any(lo < zc + QUOIN_H / 2.0 and zc - QUOIN_H / 2.0 < hi for lo, hi in clear):
+            for ex, ey in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                long_ns = (k + (ex > 0) + (ey > 0)) % 2 == 0
+                a = QUOIN_LONG if long_ns else QUOIN_SHORT
+                b = QUOIN_SHORT if long_ns else QUOIN_LONG
+                yp = n_y if ey > 0 else s_y
+                xp = e_x if ex > 0 else w_x
+                # N or S face: from the corner inward by a, on past the side face by the band's projection
+                x0, x1 = sorted((xp - ex * a, xp + ex * _BAND_PROUD))
+                # E or W face: from the N or S face inward by b, to that block's back
+                y0, y1 = sorted((yp - ey * b, yp - ey * _BAND_INTO))
+                pair = []
+                for nrm, pos, length in (((0.0, float(ey), 0.0), [(x0 + x1) / 2.0, yp, zc], x1 - x0),
+                                         ((float(ex), 0.0, 0.0), [xp, (y0 + y1) / 2.0, zc], y1 - y0)):
+                    rng = rng_for(seed, "quoin", f"{ex}{ey}{k}{nrm[0]}")
+                    pair.append({
+                        "anchor_kind": "quoin", "cover": "string_course", "collision": "none",
+                        "trim_piece": "base_course", "uv_region": uv, "slot_id": f"quoin_{ex}{ey}_{k}",
+                        "pos": [round(v, 4) for v in pos], "normal": list(nrm),
+                        "size": round(length, 4), "size2": [round(length, 4), QUOIN_H],
+                        "seed_offset": int(rng.integers(0, 1_000_000)),
+                    })
+                if boxes and any(_openings.hits(o, boxes) for o in pair):
+                    continue
+                orders.extend(pair)
+        z += QUOIN_H + QUOIN_JOINT
+        k += 1
+    return orders
+
+
 def _is_parapet(slot) -> bool:
     """A parapet tile's slot (Deli Counter >= 0.177.0): `parapet_<side>...`."""
     return str(slot.slot_id).startswith("parapet_")
