@@ -577,7 +577,98 @@ def string_course_orders(manifest: SlotManifest, regions: list, *, seed: int) ->
             "size2": [round(run, 3), round(height, 3)],
             "seed_offset": int(rng.integers(0, 1_000_000)),
         })
-    return _join_bands(orders, manifest)
+    orders += _roof_line_bands(manifest, uv, seed)
+    return _corner_bands(_join_bands(orders, manifest))
+
+
+#: A ROOF-LINE BAND UNDER A PARAPET (0.36.0, the factory's roadmap 324). Deli Counter 0.292.0 stands a parapet on
+#: the wall below it, so a facade runs from the ground to the coping with nothing marking where the roof is. A
+#: commercial front marks it: a band at the parapet's foot over the roof slab's depth, the cornice line. Patina knows
+#: that depth from the roof slot under the parapet (as `scupper_sides` does). Against a parapet standing on its roof
+#: (Deli Counter < 0.292.0) there is no depth and no band.
+_PARAPET_NORMAL = {"N": (0.0, 1.0), "S": (0.0, -1.0), "E": (1.0, 0.0), "W": (-1.0, 0.0)}
+
+
+def _roof_line_bands(manifest: SlotManifest, uv, seed: int) -> list[dict]:
+    roofs = [r for r in manifest.slots if r.role == "roof" and r.dims]
+    out = []
+    for s in sorted((s for s in manifest.slots if _is_parapet(s) and s.dims), key=lambda s: s.slot_id):
+        n = _PARAPET_NORMAL.get(str(s.slot_id)[len("parapet_"):][:1])
+        if n is None:
+            continue
+        run, thick, h = s.size()
+        foot = _base_z(s)
+        tops = [r.base_z() + r.size()[2] for r in roofs]
+        tops = [z for z in tops if foot - 1e-6 <= z <= foot + h]
+        if not tops or max(tops) - foot < STRING_MIN_GAP:
+            continue
+        roof_z = max(tops)
+        height = roof_z - foot + 2.0 * STRING_OVER
+        tx, ty = float(s.translation[0]), float(s.translation[1])
+        pos = [round(tx + n[0] * thick / 2.0, 3), round(ty + n[1] * thick / 2.0, 3), round((foot + roof_z) / 2.0, 3)]
+        rng = rng_for(seed, "roof_line", s.slot_id)
+        out.append({
+            "anchor_kind": "roof_line", "cover": "string_course", "collision": "none",
+            "trim_piece": "base_course", "uv_region": uv, "slot_id": s.slot_id,
+            "pos": pos, "normal": [n[0], n[1], 0.0],
+            "size": round(run, 3), "size2": [round(run, 3), round(height, 3)],
+            "seed_offset": int(rng.integers(0, 1_000_000)),
+        })
+    return out
+
+
+#: Zoo's string course stands this far out of its face (`core.dressing.STRING_PROUD`) and this far into it
+#: (`STRING_INTO`): mirrored, so a corner can be closed round the band's own depth.
+_BAND_PROUD, _BAND_INTO = 0.06, 0.01
+#: A run whose end stands this near the perpendicular face's plane ends at a corner.
+_CORNER_REACH = 0.6
+
+
+def _corner_bands(runs: list[dict]) -> list[dict]:
+    """Close every outside corner round a band, the way the coping closes its own (0.36.0).
+
+    Deli Counter's N and S wall runs stop at the side walls' INNER faces and a corner post seats the corner, so a
+    band built from wall slots stopped short of every corner by a wall. Per band level: an N or S run reaching
+    toward an E or W face plane runs on to that plane plus the band's projection, and an E or W run reaching toward
+    an N or S face plane stops at that band's back (the plane less `_BAND_INTO`) -- so the two meet and do not
+    overlap, and no face is shared."""
+    levels: dict = {}
+    for o in runs:
+        levels.setdefault((round(o["pos"][2], 3), o["size2"][1]), []).append(o)
+    out = []
+    for _key, group in sorted(levels.items()):
+        planes = {}
+        for o in group:
+            nx, ny = round(o["normal"][0]), round(o["normal"][1])
+            planes[(nx, ny)] = o["pos"][0] if nx else o["pos"][1]
+        for o in group:
+            nx, ny = round(o["normal"][0]), round(o["normal"][1])
+            ax = 0 if nx == 0 else 1
+            half = o["size2"][0] / 2.0
+            a0, a1 = o["pos"][ax] - half, o["pos"][ax] + half
+            lo_key, hi_key = ((-1, 0), (1, 0)) if ax == 0 else ((0, -1), (0, 1))
+            for key, is_hi in ((lo_key, False), (hi_key, True)):
+                if key not in planes:
+                    continue
+                plane = planes[key]
+                end = a1 if is_hi else a0
+                if abs(end - plane) > _CORNER_REACH:
+                    continue
+                if ax == 0:      # N or S: on past the side face by the band's projection
+                    target = plane + _BAND_PROUD if is_hi else plane - _BAND_PROUD
+                else:            # E or W: stop at the N or S band's back
+                    target = plane - _BAND_INTO if is_hi else plane + _BAND_INTO
+                if is_hi:
+                    a1 = target
+                else:
+                    a0 = target
+            o = dict(o)
+            length = round(a1 - a0, 4)
+            pos = list(o["pos"])
+            pos[ax] = round((a0 + a1) / 2.0, 4)
+            o.update(pos=pos, size=length, size2=[length, o["size2"][1]])
+            out.append(o)
+    return out
 
 
 def _join_bands(orders: list[dict], manifest: SlotManifest) -> list[dict]:

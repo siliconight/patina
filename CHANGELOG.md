@@ -3,6 +3,27 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.36.0] - a band at the roof line, and every band round its corners
+
+The factory's roadmap 324; the walker, 2026-10-29: "detail and placement of hard surfaces". The vertical slice's
+fourth build (the factory's `docs/findings/slice_look/`).
+
+### Added
+- **A roof-line band under a parapet** (`framing._roof_line_bands`, ordered with the string courses): Deli Counter
+  0.292.0 stands a parapet on the wall below it, so a facade ran from the ground to the coping with nothing marking
+  where the roof is. A band at the parapet's foot over the roof slab's depth (read from the roof slot under it, as
+  `scupper_sides` does) is the cornice line. Against a parapet standing on its roof there is no depth and no band.
+
+### Fixed
+- **A band stopped a wall short of every outside corner** (`framing._corner_bands`). Deli Counter's N and S wall runs
+  stop at the side walls' inner faces and a corner post seats the corner, so 0.35.0's string courses ended there.
+  Per band level, an N or S run reaching an E or W face runs on to it plus the band's projection, and an E or W run
+  stops at the N or S band's back: they meet, do not overlap, and share no face -- the coping's corner rule.
+
+Slice 4: the bank and the card shop carry a cream band at the floor line and another under the parapet, wrapped round
+their corners; priced against slice 3b, draws median +0, largest +11 (control floor 21), p95 median +0.031 ms.
+Tests: tests/test_string_courses.py, the roof line and the corners (fail on 0.35.0).
+
 ## [0.35.0] - a string course at every floor line
 
 The factory's roadmap 324; the walker, 2026-10-29: "Things still look simple, and computer made". Deli Counter centres
