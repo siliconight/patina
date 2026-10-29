@@ -129,6 +129,7 @@ def _wall_segments(scene: Scene, mirrored: bool = False):
     :func:`_buried` of each point it would place on one."""
     buckets: dict[tuple, list] = {}
     lo, hi = _visual_aabb(scene)
+    faces = []
     for c, n, (zlo, zhi) in _exterior_wall_faces(scene, mirrored):
         horiz = np.array([n[0], n[1]])
         h = np.linalg.norm(horiz)
@@ -136,11 +137,13 @@ def _wall_segments(scene: Scene, mirrored: bool = False):
             continue
         horiz = horiz / h
         axis = int(np.argmax(np.abs(horiz)))                 # 0=x 1=y wall runs along the other
-        along = 1 - axis
-        # bucket by which outer boundary and coarse position along the wall
         side = "hi" if horiz[axis] > 0 else "lo"
-        key = (axis, side, round(float(c[axis]), 1))
-        buckets.setdefault(key, []).append((c, horiz, along, zlo, zhi))
+        faces.append((axis, side, float(c[axis]), c, horiz, zlo, zhi))
+    plane = _plane_keys(faces)
+    for axis, side, p, c, horiz, zlo, zhi in faces:
+        # bucket by which outer boundary and coarse position along the wall
+        key = (axis, side, plane[(axis, side, p)])
+        buckets.setdefault(key, []).append((c, horiz, 1 - axis, zlo, zhi))
     for key, items in buckets.items():
         cs = np.array([it[0] for it in items])
         horiz = items[0][1]
@@ -154,6 +157,41 @@ def _wall_segments(scene: Scene, mirrored: bool = False):
             "a_min": float(a_min), "a_max": float(a_max),
             "z_lo": float(zlo), "z_hi": float(zhi),
         }
+
+
+#: Faces whose planes stand this close are ONE plane, metres (0.33.1). The
+#: shell is float32: a facade and the parapet carried up from it (Deli Counter
+#: 0.292.0) both stand at y 11.15 on `bank_branch_a02`, and their faces'
+#: centroids came back 11.149998664855957 and 11.15000057220459 -- either side of
+#: 11.15, which `round(_, 1)` sends to 11.1 and 11.2. The facade became a segment
+#: of its own topping out at 6.9 m, and its roofline anchors put 24 edge strips
+#: across a flat wall (the factory's docs/findings/parapet_flush/). Float noise
+#: is micrometres; the nearest real planes here are 5 cm apart.
+PLANE_TOL = 0.001
+
+
+def _plane_keys(faces) -> dict:
+    """``{(axis, side, plane): bucket}``: each face plane's bucket coordinate.
+
+    Planes within :data:`PLANE_TOL` of their neighbour chain into one cluster
+    and take ``round(mean, 1)`` together; every other plane keeps
+    ``round(plane, 1)`` exactly as before, so a shell whose planes were never
+    split by rounding buckets as it did."""
+    out = {}
+    groups: dict = {}
+    for axis, side, p, *_rest in faces:
+        groups.setdefault((axis, side), set()).add(p)
+    for (axis, side), ps in groups.items():
+        run = []
+        for p in sorted(ps) + [None]:
+            if run and (p is None or p - run[-1] > PLANE_TOL):
+                key = round(sum(run) / len(run), 1)
+                for q in run:
+                    out[(axis, side, q)] = key
+                run = []
+            if p is not None:
+                run.append(p)
+    return out
 
 
 #: How far behind a wall's face another face of the same facing may stand and

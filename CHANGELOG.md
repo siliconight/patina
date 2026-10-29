@@ -3,6 +3,27 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.33.1] - one plane is one bucket
+
+The factory's roadmap 324. The anchor pass groups a shell's exterior-wall faces into wall segments by
+`round(plane, 1)`, and the shell is float32: a wall face on y 11.15 comes back 11.149998664855957 from one box and
+11.15000057220459 from another, which round to 11.1 and 11.2. Two segments then stand on one face, and each orders
+its own roofline, base course and curb along it. Found on Deli Counter 0.292.0's `bank_branch_a02`, whose parapet
+stands flush on its facade: the facade became a segment topping out at 6.9 m and put 24 edge strips across a flat wall
+(the factory's `docs/findings/parapet_flush/`). It was already in the library: `airport_terminal_a01`, whose every
+facade splits so, carried 35 base courses and 25 curbs lying over one another.
+
+### Fixed
+- **`anchors._plane_keys`**: face planes within `PLANE_TOL` (1 mm) of a neighbour chain into one cluster and take
+  `round(mean, 1)` together; every other plane keeps `round(plane, 1)`, so a shell no rounding split buckets as before.
+  On `airport_terminal_a01` the overlapping pairs go 35 -> 3 base courses and 25 -> 0 curbs (the 3, and 2 edge strips,
+  are the anchors' own jittered spacing, unchanged).
+- **Across the library** (Deli Counter 0.291.0's 158 shells, `--dressing --anchors --gutters`): 76 shells' orders
+  change, 82 are identical; every change seen is a duplicate removed -- on `bank_branch_a02` the overlapping pairs go
+  10 -> 0 base courses and 11 -> 0 curbs, `apartment_walkup_a01` 11/23/22 -> 0/0/1, `funeral_home_a01` 28/26/11 ->
+  0/0/5 (base course / curb / edge strip; the factory's `docs/findings/parapet_flush/plane_census_live.txt` and
+  `overlap_live.txt`).
+
 ## [0.33.0] - a parapet has a coping
 
 The factory's roadmap 324; the walker, 2026-10-28: "less about realistic textures and more about the 3d shape
