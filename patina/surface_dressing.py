@@ -353,6 +353,42 @@ def excluded(point, exclusions, *, radius_m=0.0):
     return sorted(set(hit))
 
 
+#: DEBRIS GATHERS AT EDGES (0.34.0, the factory's roadmap 324). The walker, 2026-10-29: "Things still look simple,
+#: and computer made". Measured on the vertical slice's first build (the factory's docs/findings/slice_look/,
+#: scatter_probe.py): 4,547 of 6,111 pieces lay on 41,051 m2 of open ground at a Clark-Evans R of 0.77 -- an even
+#: sprinkle across the asphalt -- while the wall bases, where a street's debris actually collects, held 64. On open
+#: ground a candidate now survives with a probability that falls off with its distance to the nearest edge that
+#: gathers debris: a building's footprint, a wall base or a kerb (the sidewalk). The ground zones' own outlines are
+#: NOT edges: open ground is cut into tiles, and attracting to a tile's border would lay litter in a grid. Nor is the
+#: zones' union: adding a zone anywhere would move it and reshuffle every other zone's scatter. The plate's rim is
+#: Lot's perimeter zones, dressed `very_high`, and a `very_high` zone is an edge already and is not thinned; nor is
+#: anything when no gathering edge is declared, since then nothing says where the edges are.
+EDGE_FALLOFF_M = 2.5
+#: What survives far from every edge: open asphalt is mostly, not perfectly, clean.
+EDGE_FLOOR = 0.06
+#: Weeds grow in the cracks at an edge and rubble is swept there; past this distance neither is drawn.
+EDGE_ONLY_M = 2.0
+EDGE_ONLY_ASSETS = ("weed_tuft", "rubble_frag")
+#: The zones that are open ground -- kind `ground` in a `play_space`; a `gameplay_path` is ground too, already held
+#: 90 % clear, and keeps the traffic debris it has -- and the kinds whose rectangles gather debris.
+OPEN_KINDS = ("ground",)
+OPEN_EXPOSURES = ("play_space",)
+GATHER_KINDS = ("wall_base", "sidewalk")
+
+
+def _rect_distance(point, aabb) -> float:
+    """Plan distance from a point to an axis-aligned rectangle (0 inside it)."""
+    x, y = point
+    dx = max(aabb[0] - x, 0.0, x - aabb[3])
+    dy = max(aabb[1] - y, 0.0, y - aabb[4])
+    return math.hypot(dx, dy)
+
+
+def edge_distance(point, gather) -> float:
+    """Distance to the nearest edge that gathers debris: any `gather` rectangle (infinite when there is none)."""
+    return min((_rect_distance(point, a) for a in gather), default=math.inf)
+
+
 def _clustered_points(rng, aabb, n, *, clumps, sigma_frac):
     """A clustered scatter, not a uniform one.
 
@@ -445,6 +481,9 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
             "why": "planned with neither an instance nor a triangle budget; "
                    "nothing bounds what this layer costs on this site"})
     tris_spent = 0
+    gather = [z["aabb"] for z in zones if z.get("kind") in GATHER_KINDS] + \
+        [e["aabb"] for e in exclusions if e.get("tag") == "building"]
+    thinned = 0
 
     for zone in zones:
         zid = zone["surface_zone_id"]
@@ -526,8 +565,18 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
         cause = CAUSE_BY_KIND.get(zone.get("kind"), None) \
             or CAUSE_BY_EXPOSURE.get(zone.get("exposure_class"), "traffic edge")
         spent = 0.0
+        is_open = (zone.get("kind") in OPEN_KINDS and zone.get("exposure_class") in OPEN_EXPOSURES
+                   and density != "very_high" and bool(gather))
         for i, (x, y) in enumerate(points):
-            c = usable[int(rng.integers(0, len(usable)))]
+            pick_from = usable
+            if is_open:
+                d = edge_distance((x, y), gather)
+                if rng.random() >= max(EDGE_FLOOR, math.exp(-d / EDGE_FALLOFF_M)):
+                    thinned += 1
+                    continue
+                if d > EDGE_ONLY_M:
+                    pick_from = [u for u in usable if u["asset_id"] not in EDGE_ONLY_ASSETS] or usable
+            c = pick_from[int(rng.integers(0, len(pick_from)))]
             lo, hi = scale_range
             # Skewed small: real debris fields are many small, few large. A
             # uniform draw is what produces the "all the same size" read.
@@ -679,6 +728,8 @@ def plan(surfaces, catalogue, *, site_id, source, seed,
             "over_instance_budget": bool(instance_budget is not None
                                          and len(orders) > instance_budget),
             "dressable_area_m2": round(dressable, 2),
+            # open-ground candidates thinned away from the edges that gather debris (0.34.0)
+            "thinned_open_ground": thinned,
             "instances_per_m2": round(len(orders) / dressable, 4)
             if dressable > 0 else 0.0,
             "tris_per_m2": round(tris_spent / dressable, 3)

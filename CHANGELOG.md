@@ -3,6 +3,30 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.34.0] - debris where it gathers, and a roof that drains through its parapet
+
+The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and
+computer made... I want to get to a place where these levels looks handcrafted". Both changes found on the slice's
+first build (the factory's `docs/findings/slice_look/`).
+
+### Changed
+- **Debris gathers at edges** (`surface_dressing.plan`, `edge_distance`). Slice 1 laid 4,547 of 6,111 pieces across
+  41,051 m2 of open ground at a Clark-Evans R of 0.77 -- an even sprinkle out to the middle of the asphalt -- while
+  the wall bases held 64, and weeds grew in the open. On open ground (`ground` in a `play_space`) a candidate now
+  survives with probability `max(EDGE_FLOOR, exp(-d / EDGE_FALLOFF_M))` (0.06, 2.5 m), `d` its distance to the
+  nearest building, wall base or kerb; weeds and rubble only within `EDGE_ONLY_M` (2 m) of one. A ground tile's own
+  outline is not an edge (open ground is tiled), nor the zones' union (adding a zone would reshuffle the others);
+  `very_high` zones (Lot's perimeter), gameplay paths, and a site that declares no gathering edge are not thinned.
+  The manifest counts what was thinned (`cost.thinned_open_ground`). Slice 2: open ground 4,547 -> 811 pieces (11.1
+  -> 2.0 per 100 m2), plate-wide R 0.72 -> 0.51; within 2 m of an edge 605 -> 413, beyond 10 m 1,585 -> 92.
+- **A roof behind a parapet drains through it** (`framing.scupper_sides`). A gutter hung at the top storey's wall
+  top under the parapet -- a white aluminium line across the bank's facade 1.4 m below its top. On a building that
+  is not an Empty, a side a parapet stands over gets no gutter, and its downspouts run to the roof's surface, ordered
+  `head`; Zoo (>= 1.147.0) builds the scupper and conductor head. An Empty keeps its gutter (the walker asked for
+  rowhome gutters, 2026-10-04). Slice 2's bank: 64 gutters -> 0, 10 headed downspouts.
+- `tests/test_downspouts.py`'s rowhouse fixture is an Empty now (its windows `glazing: facade`), as the rowhomes it
+  pins are.
+
 ## [0.33.1] - one plane is one bucket
 
 The factory's roadmap 324. The anchor pass groups a shell's exterior-wall faces into wall segments by

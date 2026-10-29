@@ -17,16 +17,21 @@ from patina.slots import Slot, SlotManifest
 H = 3.1
 
 
-def _wall(sid, side, x, y, story, rot, h=H, role="wall", openings_=None, dims=None):
+def _wall(sid, side, x, y, story, rot, h=H, role="wall", openings_=None, dims=None, glazing=None):
     return Slot(slot_id=sid, role=role, current_ref=f"{role}_greybox_01", facing=side,
                 story=story, translation=(x, y, story * H + h / 2.0), rot_y=rot,
-                dims=dims or (2.0, 0.3, h), openings=openings_ or [])
+                dims=dims or (2.0, 0.3, h), openings=openings_ or [], glazing=glazing)
 
 
 def _rowhouse(window_on=("N",), parapet=True, storeys=3):
     """A 6 x 12 m house: walls on four sides, three 2 m modules a side on the
     short (N/S) faces and six on the long (E/W) ones, `storeys` high, a
-    window on the faces named, and a parapet on top."""
+    window on the faces named, and a parapet on top.
+
+    AN EMPTY (0.34.0): its windows are `glazing: facade`, as every rowhome's
+    are, because this file pins the rowhomes' gutters -- cold runs 9148 and
+    9151 -- and an Empty keeps its gutter under its parapet. A building that
+    is not an Empty drains through the parapet instead (test_scuppers.py)."""
     slots = []
     for st in range(storeys):
         for i in range(3):
@@ -41,7 +46,7 @@ def _rowhouse(window_on=("N",), parapet=True, storeys=3):
                               "E": (3.0, 0.0, 90.0), "W": (-3.0, 0.0, 270.0)}.items():
         if side in window_on:
             slots.append(_wall(f"ext_1_{side}_open0", side, x, y, 1, rot, role="window",
-                               dims=(0.95, 0.3, H),
+                               dims=(0.95, 0.3, H), glazing="facade",
                                openings_=[{"kind": "window", "width": 0.95, "height": 1.6,
                                            "sill": 0.85}]))
     if parapet:

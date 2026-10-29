@@ -459,8 +459,11 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
     empty = any(s.glazing == "facade" for s in manifest.slots)
     faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
              if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
+    scuppered = scupper_sides(manifest)
     for s in roofline_slots(manifest):
         if empty and _side(wall_frame(s, center, thick_m)) not in faced:
+            continue
+        if _side(wall_frame(s, center, thick_m)) in scuppered:
             continue
         _w, _d, h = s.size()
         # `run`, not dims[0]. A west wall's dims[0] is its 35 cm THICKNESS, so
@@ -481,6 +484,38 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
             "seed_offset": int(rng.integers(0, 1_000_000)),
         })
     return orders
+
+
+def scupper_sides(manifest: SlotManifest) -> dict:
+    """``{side: roof_z}``: the faces whose roof drains through its parapet (0.34.0, the factory's roadmap 324).
+
+    A flat roof behind a parapet has no eave to hang a gutter from: its water leaves through a scupper in the
+    parapet, into a conductor head, down a downspout. Patina hung a gutter at the top storey's wall top anyway, under
+    the parapet -- on seed 9082's bank a white aluminium line across the facade 1.4 m below its top, the line that
+    read from the street once the parapet stood flush (the factory's docs/findings/parapet_flush/). On a side a
+    parapet stands over the gutter is left out and the downspouts run to the roof's surface, ordered `head`, and Zoo
+    (>= 1.147.0) builds the head and the scupper.
+
+    NOT ON AN EMPTY. The walker asked for rain gutters on the rowhomes (2026-10-04), and the Empties' parapets are
+    their cornices; whether a rowhome drains through its parapet is the walker's call, and until it is made an Empty
+    keeps the gutter it has. `roof_z` is the top of the roof slot under the parapet, or the parapet's foot when the
+    manifest has none."""
+    if any(s.glazing == "facade" for s in manifest.slots):
+        return {}
+    roofs = [s for s in manifest.slots if s.role == "roof" and s.dims]
+    out = {}
+    for s in manifest.slots:
+        if not _is_parapet(s) or not s.dims:
+            continue
+        side = str(s.slot_id)[len("parapet_"):][:1]
+        out_n = {"N": (0, 1), "S": (0, -1), "E": (1, 0), "W": (-1, 0)}.get(side)
+        if out_n is None:
+            continue
+        foot = _base_z(s)
+        below = [r.base_z() + r.size()[2] for r in roofs if r.base_z() <= foot + s.size()[2]]
+        roof_z = max([z for z in below if z >= foot - 1e-6] or [foot])
+        out[out_n] = round(max(out.get(out_n, roof_z), roof_z), 3)
+    return out
 
 
 def _is_parapet(slot) -> bool:
@@ -552,6 +587,7 @@ def downspout_orders(manifest: SlotManifest, regions: list, *, seed: int,
         z = _base_z(s)
         if s.story is not None and int(s.story) == 0:
             ground[key] = min(ground.get(key, z), z)
+    scuppered = scupper_sides(manifest)
     runs = {}
     for s in top:
         frame = wall_frame(s, center, thick_m)
@@ -570,6 +606,9 @@ def downspout_orders(manifest: SlotManifest, regions: list, *, seed: int,
         lo, hi = min(span(it)[0] for it in items), max(span(it)[1] for it in items)
         s0, _f0 = items[0]
         top_z = _base_z(s0) + s0.size()[2] - drop - GUTTER_CROSS / 2.0
+        headed = key in scuppered
+        if headed:
+            top_z = scuppered[key]
         base = ground.get(key, min(_base_z(s) for s, _f in items))
         if top_z - base <= 0.5:
             continue
@@ -583,12 +622,15 @@ def downspout_orders(manifest: SlotManifest, regions: list, *, seed: int,
                 if a0 - 1e-6 <= a <= a1 + 1e-6:
                     s, frame = it
                     pos, n = _face(s, a - ac, mid_z, frame)
-                    return {"anchor_kind": "downspout", "cover": "downspout",
-                            "collision": "none", "trim_piece": "flashing",
-                            "uv_region": uv, "slot_id": s.slot_id,
-                            "pos": pos, "normal": n,
-                            "size": round(top_z - base, 3),
-                            "seed_offset": int(rng.integers(0, 1_000_000))}
+                    o = {"anchor_kind": "downspout", "cover": "downspout",
+                         "collision": "none", "trim_piece": "flashing",
+                         "uv_region": uv, "slot_id": s.slot_id,
+                         "pos": pos, "normal": n,
+                         "size": round(top_z - base, 3),
+                         "seed_offset": int(rng.integers(0, 1_000_000))}
+                    if headed:
+                        o["head"] = True
+                    return o
             return None
 
         def clear(o):
