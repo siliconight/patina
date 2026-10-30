@@ -729,6 +729,14 @@ QUOIN_JOINT = 0.03
 QUOIN_LONG = 0.62
 QUOIN_SHORT = 0.36
 QUOIN_BAND_CLEAR = 0.05
+#: NOTHING PROUD WITHIN A STANDING BODY'S HEIGHT (0.38.1). A quoin stands `_BAND_PROUD` off the wall with no collision,
+#: and a wall's collider ends at its face, so a block within a body's height is geometry a body walks into -- the rule
+#: the panel fields and pilasters were withdrawn for (Level Factory's Patina adapter, Zoo's `arch.relief_parts`).
+#: 0.38.0 laid them from the ground. So the quoined body starts above the lowest band clear of a standing body, as a
+#: quoined upper body over a plain base storey does; a civic building with no band that high gets none. The figure
+#: mirrors Deli Counter's `agent_contract.json` `characters.player.height_m` (1.8) and a hand over it; a test pins the
+#: mirror where the contract can be read.
+BODY_CLEAR_M = 1.85
 
 
 def quoin_orders(manifest: SlotManifest, regions: list, *, seed: int, bands=()) -> list[dict]:
@@ -760,8 +768,13 @@ def quoin_orders(manifest: SlotManifest, regions: list, *, seed: int, bands=()) 
              for b in bands]
     boxes = _openings.keep_out_boxes(manifest)
     n_y, s_y, e_x, w_x = planes[(0, 1)], planes[(0, -1)], planes[(1, 0)], planes[(-1, 0)]
+    # the lowest band clear of a standing body: the quoins start just above it
+    over = sorted(b["pos"][2] + b["size2"][1] / 2.0 for b in bands
+                  if b["pos"][2] - b["size2"][1] / 2.0 >= ground + BODY_CLEAR_M)
+    if not over:
+        return []
     orders = []
-    z, k = ground, 0
+    z, k = over[0] + QUOIN_BAND_CLEAR, 0
     while z + QUOIN_H <= top + 1e-6:
         zc = z + QUOIN_H / 2.0
         if not any(lo < zc + QUOIN_H / 2.0 and zc - QUOIN_H / 2.0 < hi for lo, hi in clear):

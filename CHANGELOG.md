@@ -3,6 +3,18 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.38.1] - no quoin within a standing body's height
+
+### Fixed
+- **`framing.quoin_orders`**: 0.38.0 laid quoins from the ground. A block stands 6 cm proud of the wall with no
+  collision, and a wall's collider ends at its face, so every block within a body's height was geometry a body walks
+  into -- the rule panel fields and pilasters were withdrawn for (Level Factory's Patina adapter; Zoo's
+  `arch.relief_parts`). The quoined body now starts just above the lowest band clear of a standing body
+  (`BODY_CLEAR_M`, 1.85: Deli Counter's `agent_contract.json` player height, 1.8, and a hand), as a quoined upper
+  body over a plain base storey does; a civic building with no band that high gets none. Tests:
+  tests/test_quoins.py (the body-height case fails on 0.38.0; the mirror is pinned against the contract where it can
+  be read).
+
 ## [0.38.0] - quoins up a civic building's corners
 
 The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and

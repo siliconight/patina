@@ -46,3 +46,36 @@ def test_blocks_alternate_close_their_corners_and_keep_clear_of_the_bands():
     # what is held is that both lengths stand at the corner, each with its wrap
     assert set(lens) == {round(framing.QUOIN_LONG + framing._BAND_PROUD, 3),
                          round(framing.QUOIN_SHORT + framing._BAND_PROUD, 3)}
+
+
+def test_no_block_stands_within_a_standing_bodys_height():
+    """FAILS ON 0.38.0: its quoins ran from the ground, 6 cm proud and without collision, where a body walks."""
+    m = _block(storeys=2)
+    bands = framing.string_course_orders(m, _regions(), seed=1999)
+    q = framing.quoin_orders(_named(m, "bank_branch_a02"), _regions(), seed=1999, bands=bands)
+    assert q
+    ground = min(framing._base_z(s) for s in m.slots if s.story is not None and int(s.story) == 0)
+    lowest = min(o["pos"][2] - o["size2"][1] / 2.0 for o in q)
+    assert lowest >= ground + framing.BODY_CLEAR_M
+    # and they start on the band that cleared it, not part way up a wall
+    first = min(b["pos"][2] + b["size2"][1] / 2.0 for b in bands
+                if b["pos"][2] - b["size2"][1] / 2.0 >= ground + framing.BODY_CLEAR_M)
+    assert lowest == pytest.approx(first + framing.QUOIN_BAND_CLEAR, abs=1e-3)
+
+
+def test_with_no_band_clear_of_a_body_there_are_no_quoins():
+    m = _block(storeys=2)
+    bands = framing.string_course_orders(m, _regions(), seed=1999)
+    assert framing.quoin_orders(_named(m, "bank_branch_a02"), _regions(), seed=1999, bands=[]) == []
+    low = [b for b in bands if b["pos"][2] < 1.0]
+    assert framing.quoin_orders(_named(m, "bank_branch_a02"), _regions(), seed=1999, bands=low) == []
+
+
+def test_the_body_height_mirrors_the_agent_contract():
+    import json
+    import pathlib
+    contract = pathlib.Path(__file__).resolve().parents[2] / "deli_counter" / "agent_contract.json"
+    if not contract.is_file():
+        pytest.skip("no Deli Counter beside this repo to read the contract from")
+    h = json.loads(contract.read_text(encoding="utf-8"))["characters"]["player"]["height_m"]
+    assert h <= framing.BODY_CLEAR_M <= h + 0.1
