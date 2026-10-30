@@ -106,6 +106,9 @@ class Slot:
     antenna: bool = False
     dish: bool = False
     front: Optional[str] = None
+    # the slot's material KIND as Deli Counter wrote it (`concrete`, `brick`, ...): a stain is laid in the wall's own
+    # skin (0.39.0, `framing.stain_orders`)
+    material: Optional[str] = None
 
     def size(self) -> tuple:
         """The slot's real-world ``(w, d, h)`` in metres.
@@ -237,6 +240,7 @@ def parse(raw: dict) -> SlotManifest:
             antenna=bool(r.get("antenna", False)),
             dish=bool(r.get("dish", False)),
             front=r.get("front"),
+            material=r.get("material"),
         ))
     return SlotManifest(
         version=raw.get("slot_manifest_version", "0"),

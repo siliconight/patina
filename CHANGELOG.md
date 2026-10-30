@@ -3,6 +3,26 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.39.0] - a stain below every window's sill
+
+The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and
+computer made". A real facade darkens below what sheds water onto it; the slice's walls were one even field.
+
+### Added
+- **`framing.stain_orders`**: a `stain_streak` below every exterior window with a sill (`STAIN_MIN_SILL`, 0.4 m),
+  two or more for a wide one (`STAIN_WIDE`, 1.15 m; `STAIN_STREAK_MAX` 1.6, `STAIN_GAP` 0.35), hung
+  `STAIN_BELOW_SILL` under it and run `STAIN_RUN` (0.9-1.6 m) down the wall, seeded. Each names its wall's kind as
+  `wall_material` -- the commonest non-glass material of the `wall` slots on the same `ext_<storey>_<side>`, since a
+  window slot's own is glass -- so Zoo (>= 1.153.0) lays it in the wall's skin. It keeps clear of every door's,
+  garage's and breach's lane itself, and not of its own window's: it hangs inside that window's margin by design.
+  `slots.Slot.material` is read from the manifest. The CLI adds them after the quoins.
+- **`openings.EXEMPT`** gains `stain_streak`, the tenth: the dressing's keep-out filter dropped every stain on the
+  slice's first build (all 16 on the bank) for standing inside its own window's margin.
+
+On the slice (the factory's `docs/findings/slice_look/`, slices 17-17e): 258 stain orders across the avenue, about
+129 distinct, 17 on the bank. Tests: tests/test_stains.py, with three buildings' exterior slots as fixtures;
+tests/test_openings.py (the exemptions are ten).
+
 ## [0.38.1] - no quoin within a standing body's height
 
 ### Fixed

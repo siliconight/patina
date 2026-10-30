@@ -807,6 +807,82 @@ def quoin_orders(manifest: SlotManifest, regions: list, *, seed: int, bands=()) 
     return orders
 
 
+#: A STAIN WHERE WATER RUNS (0.39.0, Zoo >= 1.153.0 builds it, Level Factory >= 0.271.0 draws it). The walker, of the
+#: vertical slice: "Things still look simple, and computer made". A facade darkens where water runs off what sheds it,
+#: and nowhere else; the slice's walls were one even field. Every exterior window with a sill above `STAIN_MIN_SILL`
+#: sheds onto the wall below it: a `stain_streak` order at the sill's foot, `STAIN_WIDE` the opening's width, running
+#: down `STAIN_RUN` (seeded between its bounds, never past the storey's foot), in the WALL RUN's material kind -- the
+#: commonest kind among the `wall` slots of the same storey and side, which is the kind a window module builds its
+#: outer surround in too; the window slot's own `material` is its pane's (`glass`). One a window; one that would meet
+#: a door's lane is dropped.
+STAIN_MIN_SILL = 0.4
+STAIN_WIDE = 1.15
+STAIN_RUN = (0.9, 1.6)
+STAIN_BELOW_SILL = 0.03
+#: a sill wider than this sheds in separate streaks, each at most this wide, `STAIN_GAP` of its share apart
+STAIN_STREAK_MAX = 1.6
+STAIN_GAP = 0.35
+
+
+def stain_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[dict]:
+    """A `stain_streak` below every exterior window's sill."""
+    from . import openings as _openings
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    # a stain must not cross a way through -- a door, a garage, a breach -- but it sits just under its own window,
+    # whose lane reaches below the sill by the keep-out margin: windows' lanes are not what it keeps clear of
+    boxes = [b for b in _openings.keep_out_boxes(manifest) if b.get("kind") != "window"]
+    runs: dict = {}
+    for w in manifest.slots:
+        sid = str(w.slot_id)
+        # a run's glass is its storefront, not its wall: a stain is never laid in it
+        if w.role == "wall" and sid.startswith("ext_") and w.material and "glass" not in str(w.material):
+            key = "_".join(sid.split("_")[:3])
+            runs.setdefault(key, {}).setdefault(w.material, 0)
+            runs[key][w.material] += 1
+    orders = []
+    for s in manifest.slots:
+        if s.role != "window" or not s.dims or not str(s.slot_id).startswith("ext_"):
+            continue
+        kinds = runs.get("_".join(str(s.slot_id).split("_")[:3]))
+        if not kinds:
+            continue
+        kind = sorted(kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        if s.glazing == "storefront":
+            continue
+        frame = wall_frame(s, center, thick_m)
+        base_z = _base_z(s)
+        for k, op in enumerate(s.openings):
+            ow, sill = float(op.get("width", 0.0)), float(op.get("sill", 0.0))
+            if ow <= 0.0 or sill < STAIN_MIN_SILL:
+                continue
+            rng = rng_for(seed, "stain", s.slot_id, str(k))
+            top = base_z + sill - STAIN_BELOW_SILL
+            run = min(float(rng.uniform(*STAIN_RUN)), top - base_z - 0.05)
+            if run <= 0.2:
+                continue
+            span = ow * STAIN_WIDE
+            parts = max(1, int(math.ceil(span / STAIN_STREAK_MAX - 1e-9)))
+            share = span / parts
+            for q in range(parts):
+                lx = -span / 2.0 + share * (q + 0.5)
+                width = share * (1.0 - STAIN_GAP) if parts > 1 else share
+                length = run * (0.75 + 0.25 * float(rng.random())) if parts > 1 else run
+                pos, n = _face(s, lx, top, frame)
+                order = {
+                    "anchor_kind": "stain", "cover": "stain_streak", "collision": "none",
+                    "trim_piece": None, "uv_region": None, "slot_id": s.slot_id,
+                    "wall_material": kind,
+                    "pos": pos, "normal": n,
+                    "size": round(width, 3), "size2": [round(width, 3), round(length, 3)],
+                    "seed_offset": int(rng.integers(0, 1_000_000)),
+                }
+                if boxes and _openings.hits(order, boxes):
+                    continue
+                orders.append(order)
+    return orders
+
+
 def _is_parapet(slot) -> bool:
     """A parapet tile's slot (Deli Counter >= 0.177.0): `parapet_<side>...`."""
     return str(slot.slot_id).startswith("parapet_")

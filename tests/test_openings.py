@@ -88,7 +88,7 @@ def test_a_strip_that_only_REACHES_the_opening_is_caught():
     assert openings.hits(beside, boxes), "swept span must be tested, not the origin"
 
 
-def test_the_exemptions_are_the_listed_nine():
+def test_the_exemptions_are_the_listed_ten():
     """Surrounding an opening is the entire point of a frame. An Empty's
     window fixtures (0.26.0) stand IN their sealed opening, its stone lintel
     and sill (0.27.0) on that opening's head and sill, its iron security door
@@ -102,7 +102,8 @@ def test_the_exemptions_are_the_listed_nine():
     kept, rep = openings.apply([f], boxes)
     assert kept == [f] and not rep["dropped"]
     assert openings.EXEMPT == ("frame", "window_bars", "ac_unit", "lintel", "window_sill",
-                               "security_door", "tv_antenna", "sat_dish", "coping"), \
+                               "security_door", "tv_antenna", "sat_dish", "coping",
+                               "stain_streak"), \
         "adding another must be deliberate"
 
 

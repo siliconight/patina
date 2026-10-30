@@ -57,9 +57,11 @@ TRAVERSABLE = ("door", "garage", "window", "breach")
 #: roof's `tv_antenna` and `sat_dish` (0.29.0): nothing walks or shoots
 #: across an Empty's roof. A parapet's `coping` (0.33.0) lies on top of a
 #: solid wall no opening passes through, and its `size2` is (length, width)
-#: in plan, not the (span, height) this rule measures.
+#: in plan, not the (span, height) this rule measures. A `stain_streak` (0.39.0) is the wall's own skin 2 mm off it,
+#: hung just under its window's sill -- inside that window's margin by construction -- and `framing.stain_orders`
+#: keeps it clear of every door's, garage's and breach's lane itself.
 EXEMPT = ("frame", "window_bars", "ac_unit", "lintel", "window_sill", "security_door",
-          "tv_antenna", "sat_dish", "coping")
+          "tv_antenna", "sat_dish", "coping", "stain_streak")
 
 #: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
 #: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base
