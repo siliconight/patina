@@ -832,22 +832,14 @@ def stain_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[di
     # a stain must not cross a way through -- a door, a garage, a breach -- but it sits just under its own window,
     # whose lane reaches below the sill by the keep-out margin: windows' lanes are not what it keeps clear of
     boxes = [b for b in _openings.keep_out_boxes(manifest) if b.get("kind") != "window"]
-    runs: dict = {}
-    for w in manifest.slots:
-        sid = str(w.slot_id)
-        # a run's glass is its storefront, not its wall: a stain is never laid in it
-        if w.role == "wall" and sid.startswith("ext_") and w.material and "glass" not in str(w.material):
-            key = "_".join(sid.split("_")[:3])
-            runs.setdefault(key, {}).setdefault(w.material, 0)
-            runs[key][w.material] += 1
+    runs = _run_kinds(manifest)
     orders = []
     for s in manifest.slots:
         if s.role != "window" or not s.dims or not str(s.slot_id).startswith("ext_"):
             continue
-        kinds = runs.get("_".join(str(s.slot_id).split("_")[:3]))
-        if not kinds:
+        kind = runs.get("_".join(str(s.slot_id).split("_")[:3]))
+        if not kind:
             continue
-        kind = sorted(kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
         if s.glazing == "storefront":
             continue
         frame = wall_frame(s, center, thick_m)
@@ -880,6 +872,94 @@ def stain_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[di
                 if boxes and _openings.hits(order, boxes):
                     continue
                 orders.append(order)
+    return orders
+
+
+def _run_kinds(manifest: SlotManifest) -> dict:
+    """``{"ext_<storey>_<side>": kind}``: the commonest material kind among a run's `wall` slots, ties broken by name.
+    A run's glass is its storefront, not its wall, and a stain is never laid in it."""
+    counts: dict = {}
+    for w in manifest.slots:
+        sid = str(w.slot_id)
+        if w.role == "wall" and sid.startswith("ext_") and w.material and "glass" not in str(w.material):
+            key = "_".join(sid.split("_")[:3])
+            counts.setdefault(key, {}).setdefault(w.material, 0)
+            counts[key][w.material] += 1
+    return {k: sorted(v.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] for k, v in counts.items()}
+
+
+#: GRIME AT A WALL'S BASE (0.40.0, Zoo >= 1.154.0 builds it, Level Factory >= 0.271.0 draws it). Rain splashes back
+#: off the ground and damp rises: a real wall darkens from the ground up, and the slice's walls met the sidewalk
+#: clean. A `stain_base` order runs along each SPAN of a ground storey's side -- consecutive exterior slots of wall,
+#: not glass, none of whose openings comes below `GRIME_CLEAR` (a door, a garage, a breach, a storefront end it; a
+#: window whose sill is above the band keeps it under) -- from the storey's foot up `GRIME_H` (seeded between its bounds; Zoo
+#: lifts each column to its own share of it). One order a span, so no seam shows at a module joint and the band
+#: fades only at the span's own ends, at a corner or an opening. In the run's wall kind, as a stain under a sill.
+#: 0.45-0.7 m read as a sliver at the wall's foot (the factory's slice 18b); splash-back and rising damp reach higher
+GRIME_H = (0.5, 0.85)
+GRIME_CLEAR = GRIME_H[1] + 0.05
+#: a span shorter than this is a pier between openings, and gets none
+GRIME_MIN_SPAN = 0.6
+#: slots closer than this along their side are one span
+GRIME_JOIN = 0.02
+
+
+def base_grime_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[dict]:
+    """A `stain_base` along each span of every ground storey side, between its corners and its low openings."""
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    runs = _run_kinds(manifest)
+    sides: dict = {}
+    for s in manifest.slots:
+        sid = str(s.slot_id)
+        if not sid.startswith("ext_0_") or not s.dims:
+            continue
+        sides.setdefault("_".join(sid.split("_")[:3]), []).append(s)
+    orders = []
+    for key in sorted(sides):
+        kind = runs.get(key)
+        if not kind:
+            continue
+        group = sides[key]
+        first = group[0]
+        frame0 = wall_frame(first, center, thick_m)
+        along = frame0[2]
+        x0, y0 = float(first.translation[0]), float(first.translation[1])
+        spans = []
+        for s in group:
+            run = wall_frame(s, center, thick_m)[0]
+            p = (float(s.translation[0]) - x0) * along[0] + (float(s.translation[1]) - y0) * along[1]
+            low = any(float(op.get("sill", 0.0)) < GRIME_CLEAR for op in s.openings)
+            # a storefront's or a glass facade's module is glass to its foot: grime is never laid on a pane
+            glass = "glass" in str(s.material) or s.glazing == "storefront"
+            spans.append((p - run / 2.0, p + run / 2.0, not (low or glass), s))
+        spans.sort(key=lambda r: (r[0], r[1]))
+        merged = []
+        for a, b, ok, s in spans:
+            if not ok:
+                merged.append(None)
+                continue
+            if merged and merged[-1] is not None and a - merged[-1][1] < GRIME_JOIN:
+                merged[-1][1] = max(merged[-1][1], b)
+            else:
+                merged.append([a, b, s])
+        k = 0
+        for m in merged:
+            if m is None or m[1] - m[0] < GRIME_MIN_SPAN:
+                continue
+            a, b, s = m
+            rng = rng_for(seed, "grime", key, str(k))
+            k += 1
+            height = float(rng.uniform(*GRIME_H))
+            pos, n = _face(first, (a + b) / 2.0, _base_z(s), frame0)
+            orders.append({
+                "anchor_kind": "stain", "cover": "stain_base", "collision": "none",
+                "trim_piece": None, "uv_region": None, "slot_id": s.slot_id,
+                "wall_material": kind,
+                "pos": pos, "normal": n,
+                "size": round(b - a, 3), "size2": [round(b - a, 3), round(height, 3)],
+                "seed_offset": int(rng.integers(0, 1_000_000)),
+            })
     return orders
 
 

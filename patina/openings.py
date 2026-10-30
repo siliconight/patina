@@ -59,9 +59,11 @@ TRAVERSABLE = ("door", "garage", "window", "breach")
 #: solid wall no opening passes through, and its `size2` is (length, width)
 #: in plan, not the (span, height) this rule measures. A `stain_streak` (0.39.0) is the wall's own skin 2 mm off it,
 #: hung just under its window's sill -- inside that window's margin by construction -- and `framing.stain_orders`
-#: keeps it clear of every door's, garage's and breach's lane itself.
+#: keeps it clear of every door's, garage's and breach's lane itself. A `stain_base` (0.40.0) is the same skin along
+#: a wall's foot, and `framing.base_grime_orders` ends it at every opening that comes down into its band -- right
+#: beside the jamb, inside that opening's margin, where real grime is heaviest.
 EXEMPT = ("frame", "window_bars", "ac_unit", "lintel", "window_sill", "security_door",
-          "tv_antenna", "sat_dish", "coping", "stain_streak")
+          "tv_antenna", "sat_dish", "coping", "stain_streak", "stain_base")
 
 #: Cross-axis of each cover, MIRRORED from `zoo_keeper/core/dressing.py`
 #: `_COVER`. An order declares its SPAN; how tall a curb is or how deep a base

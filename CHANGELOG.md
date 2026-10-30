@@ -3,6 +3,25 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.40.0] - grime along every ground storey's base
+
+The factory's roadmap 324. A real wall darkens from the ground up; the slice's walls met the sidewalk clean.
+
+### Added
+- **`framing.base_grime_orders`**: a `stain_base` along each SPAN of a ground storey's side -- consecutive exterior
+  slots of wall, not glass, none of whose openings comes below `GRIME_CLEAR` -- from the storey's foot up `GRIME_H`
+  (0.5-0.85 m, seeded; 0.45-0.7 read as a sliver at the wall's foot on slice 18b). One order a span, so no seam shows
+  at a module joint and the band fades only at a corner or an opening; a door, a garage, a breach and a storefront
+  end it, and a window whose sill is above the band keeps it under. A span under `GRIME_MIN_SPAN` (0.6 m) is a pier
+  and gets none. In the run's wall kind. `_run_kinds` is the run-kind lookup `stain_orders` did inline, now shared.
+  The CLI adds them after the window stains.
+- **`openings.EXEMPT`** gains `stain_base`, the eleventh: a span ends at a door's jamb, inside the door's margin,
+  where real grime is heaviest.
+
+On the slice (slices 18-20): 228 orders across the avenue, about 114 distinct; the bank's street front is a
+storefront and gets none. Priced on slice 18 against slice 17e: draws median +0, largest +2. Tests:
+tests/test_base_grime.py, tests/test_openings.py (the exemptions are eleven).
+
 ## [0.39.0] - a stain below every window's sill
 
 The factory's roadmap 324; the walker, 2026-10-29, of the game's vertical slice: "Things still look simple, and
