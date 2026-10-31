@@ -415,6 +415,8 @@ def run(args: argparse.Namespace) -> dict:
             with open(sheet_path, "wb") as fh:
                 fh.write(sheet_bytes)
             panels = []
+            # the gutters' downspouts, which the runoff stains read (0.41.0)
+            downspouts = []
             facade_flags = (args.panel_fields or args.frames or args.gutters
                             or args.pilasters)
             if facade_flags and slot_manifest is None:
@@ -433,9 +435,10 @@ def run(args: argparse.Namespace) -> dict:
                                                     seed=args.seed)
                     # 0.25.0: a gutter brings its downspouts, placed clear of
                     # the openings by the same keep-out the filter enforces
-                    panels += framing.downspout_orders(
+                    downspouts = framing.downspout_orders(
                         slot_manifest, regions, seed=args.seed,
                         keep_out=openings.keep_out_boxes(slot_manifest))
+                    panels += downspouts
                 if args.pilasters:
                     panels += framing.pilaster_orders(slot_manifest, regions,
                                                       seed=args.seed)
@@ -477,6 +480,10 @@ def run(args: argparse.Namespace) -> dict:
                 # and grime along every ground storey's base (0.40.0)
                 panels += framing.base_grime_orders(
                     slot_manifest, regions, seed=args.seed)
+                # and a stain where the roof's water leaves it: under each
+                # conductor head the gutters ordered, and under the copings (0.41.0)
+                panels += framing.runoff_orders(
+                    slot_manifest, regions, seed=args.seed, downspouts=downspouts)
             # The keep-out rule needs DC's openings, which only the slot
             # manifest carries. Without one there is nothing to protect and
             # the filter is skipped -- said out loud below rather than

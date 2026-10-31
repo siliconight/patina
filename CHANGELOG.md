@@ -3,6 +3,34 @@
 All notable changes to Patina. Format follows [Keep a Changelog](https://keepachangelog.com/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.41.0] - a stain where a roof's water leaves it, and an Empty told apart from a storey nobody reaches
+
+The factory's roadmap 324; the walker, of the vertical slice: "keep getting us closer to that amazing vertical slice
+look".
+
+### Added
+- **`framing.runoff_orders`**: a flat roof sheds through its scuppers into conductor heads, and a head overflows; a
+  coping sheds in drips at its joints. The slice's walls were clean under both. On the faces somebody sees: under each
+  conductor head the gutters ordered (`downspout_orders`' `head`), a `stain_streak` `HEAD_WIDE` (0.7-1.0 m) across the
+  pipe from the head down `HEAD_RUN` (1.8-3.2 m, never past its storey's foot); under each exposed parapet run, a drip
+  every `DRIP_EVERY` (1.8 m, jittered, `DRIP_KEEP` 65 % kept), `DRIP_WIDE` (0.22-0.45 m) by `DRIP_RUN` (0.45-1.1 m),
+  `DRIP_UNDER` below the parapet's top, in the parapet's own material. A stain in every other way: Zoo (>= 1.153.0)
+  builds it, Level Factory (>= 0.271.0) draws it in the building's one stain mesh. The CLI hands the gutters'
+  downspouts to it. The card shop: 8 head streaks, 22 drips; the bank: 30 drips.
+
+### Fixed
+- **`framing.is_empty`**: five families -- gutters, scuppers, string courses, quoins, copings -- told an Empty apart
+  by "any slot glazed `facade`". Deli Counter 0.295.0 paints the windows of a storey nobody reaches, and the slice's
+  bank read as an Empty to all five: no scuppers, no string courses, no quoins, a gutter under its parapet. An Empty
+  paints EVERY window; a building with a storey nobody reaches keeps clear glass where people are. Not told apart: a
+  building whose only windows stand on a storey nobody reaches; the library has none.
+
+On the slice (slice 24 against slice 23, nothing else different; the factory's docs/findings/slice_look/, perf_s24_*): the bank's 8 string courses and 64 quoins back, string-course orders 22 -> 166 across the avenue, conductor heads 44 -> 64, stain orders 362 -> 754; draws median +0, largest +7 -- every stain rides its building's one stain mesh.
+
+Tests: tests/test_runoff.py, fixtures `runoff_{bank_branch_a02,card_shop_a01,gs_empty_rowhome_a}.slots.json` from the
+live builds (Deli Counter 0.295.1), trimmed to wall, parapet and roof slots (fails on 0.40.0: the bank has no
+scuppered side).
+
 ## [0.40.0] - grime along every ground storey's base
 
 The factory's roadmap 324. A real wall darkens from the ground up; the slice's walls met the sidewalk clean.

@@ -456,7 +456,7 @@ def gutter_orders(manifest: SlotManifest, regions: list, *, seed: int,
     orders = []
     center = footprint_center(manifest)
     thick_m = modal_thickness(manifest)
-    empty = any(s.glazing == "facade" for s in manifest.slots)
+    empty = is_empty(manifest)
     faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
              if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
     scuppered = scupper_sides(manifest)
@@ -500,7 +500,7 @@ def scupper_sides(manifest: SlotManifest) -> dict:
     their cornices; whether a rowhome drains through its parapet is the walker's call, and until it is made an Empty
     keeps the gutter it has. `roof_z` is the top of the roof slot under the parapet, or the parapet's foot when the
     manifest has none."""
-    if any(s.glazing == "facade" for s in manifest.slots):
+    if is_empty(manifest):
         return {}
     roofs = [s for s in manifest.slots if s.role == "roof" and s.dims]
     out = {}
@@ -534,7 +534,7 @@ STRING_MIN_GAP = 0.05    # a gap smaller than this is not a slab band (an Empty'
 
 def string_course_orders(manifest: SlotManifest, regions: list, *, seed: int) -> list[dict]:
     """One ``string_course`` per exterior wall or opening slot standing on a slab band above grade."""
-    if any(s.glazing == "facade" for s in manifest.slots):
+    if is_empty(manifest):
         return []
     uv = _uv(regions, "base_course")
     center = footprint_center(manifest)
@@ -742,7 +742,7 @@ BODY_CLEAR_M = 1.85
 def quoin_orders(manifest: SlotManifest, regions: list, *, seed: int, bands=()) -> list[dict]:
     """Quoins up every outside corner of a civic building that is not an Empty, as `string_course` orders."""
     bid = str(manifest.building_id or "").lower()
-    if not any(w in bid for w in CIVIC_WORDS) or any(s.glazing == "facade" for s in manifest.slots):
+    if not any(w in bid for w in CIVIC_WORDS) or is_empty(manifest):
         return []
     from . import openings as _openings
     uv = _uv(regions, "base_course")
@@ -961,6 +961,20 @@ def base_grime_orders(manifest: SlotManifest, regions: list, *, seed: int) -> li
                 "seed_offset": int(rng.integers(0, 1_000_000)),
             })
     return orders
+
+
+def is_empty(manifest: SlotManifest) -> bool:
+    """An Empty: a hollow shell, every window of it painted shut (0.41.0).
+
+    Every family here that treats an Empty apart -- its gutters on party walls, no scuppers, no string course, no
+    quoins, its copings stopping at the lot line -- asked "does any slot carry `glazing: facade`". Deli Counter 0.295.0
+    paints the windows of a storey nobody reaches too, and the slice's bank, whose upper storey is one, read as an Empty
+    to all five: it lost its scuppers, string courses and quoins and took a gutter under its parapet. An Empty paints
+    EVERY window -- a corner shop's front is a painted pane too -- and a building with a storey nobody reaches keeps
+    clear glass where people are. Not told apart: a building whose only windows stand on a storey nobody reaches; the
+    library has none."""
+    windows = [s for s in manifest.slots if s.role == "window"]
+    return any(s.glazing == "facade" for s in manifest.slots) and all(s.glazing == "facade" for s in windows)
 
 
 def _is_parapet(slot) -> bool:
@@ -1216,6 +1230,94 @@ def _parapet_runs(tiles: list) -> list[dict]:
     return runs
 
 
+#: A STAIN WHERE A ROOF'S WATER LEAVES IT (0.41.0, Zoo >= 1.153.0 builds a `stain_streak`, Level Factory >= 0.271.0
+#: draws it in the building's one stain mesh). A flat roof sheds through its scuppers into conductor heads, and a head
+#: overflows: the wall under every head on the slice's bank and card shop was clean where a real one is streaked a
+#: storey down, wider than the pipe. And a coping sheds in drips at its joints: short dark runs under the parapet's
+#: lip. So, on the faces somebody sees:
+#:   * under each conductor head (a `downspout` order carrying `head`, `downspout_orders`), a streak `HEAD_WIDE` across
+#:     the pipe, from the head down `HEAD_RUN` (seeded, never past its storey's foot);
+#:   * under each exposed parapet run, a drip every `DRIP_EVERY` or so (jittered, `DRIP_KEEP` of them kept), `DRIP_WIDE`
+#:     across and `DRIP_RUN` down from `DRIP_UNDER` below the parapet's top, in the parapet's own material.
+#: Both are stains in every other way -- `stain_orders`' shape, the wall's kind, exempt from the openings' keep-out but
+#: never across a door's lane.
+HEAD_WIDE = (0.7, 1.0)
+HEAD_RUN = (1.8, 3.2)
+DRIP_EVERY = 1.8
+DRIP_JITTER = 0.5
+DRIP_KEEP = 0.65
+DRIP_WIDE = (0.22, 0.45)
+DRIP_RUN = (0.45, 1.1)
+DRIP_UNDER = 0.06
+
+
+def runoff_orders(manifest: SlotManifest, regions: list, *, seed: int, downspouts=()) -> list[dict]:
+    """`stain_streak` orders under each conductor head in ``downspouts`` and drips under every exposed parapet."""
+    from . import openings as _openings
+    center = footprint_center(manifest)
+    thick_m = modal_thickness(manifest)
+    boxes = [b for b in _openings.keep_out_boxes(manifest) if b.get("kind") != "window"]
+    runs = _run_kinds(manifest)
+    by_id = {str(s.slot_id): s for s in manifest.slots}
+    orders = []
+
+    def keep(order):
+        if boxes and _openings.hits(order, boxes):
+            return
+        orders.append(order)
+
+    # ---- under each conductor head
+    for d in downspouts:
+        if not d.get("head"):
+            continue
+        s = by_id.get(str(d.get("slot_id")))
+        if s is None:
+            continue
+        kind = runs.get("_".join(str(s.slot_id).split("_")[:3]))
+        if not kind:
+            continue
+        rng = rng_for(seed, "runoff_head", str(s.slot_id), str(d["pos"][0]), str(d["pos"][1]))
+        top = float(d["pos"][2]) + float(d["size"]) / 2.0
+        run = min(float(rng.uniform(*HEAD_RUN)), top - _base_z(s) - 0.1)
+        if run <= 0.3:
+            continue
+        width = float(rng.uniform(*HEAD_WIDE))
+        keep({"anchor_kind": "stain", "cover": "stain_streak", "collision": "none",
+              "trim_piece": None, "uv_region": None, "slot_id": s.slot_id, "wall_material": kind,
+              "pos": [d["pos"][0], d["pos"][1], round(top, 3)], "normal": list(d["normal"]),
+              "size": round(width, 3), "size2": [round(width, 3), round(run, 3)],
+              "seed_offset": int(rng.integers(0, 1_000_000))})
+
+    # ---- drips under every parapet a person sees
+    faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
+             if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
+    for s in manifest.slots:
+        if not _is_parapet(s) or not s.dims or not s.material or "glass" in str(s.material):
+            continue
+        frame = wall_frame(s, center, thick_m)
+        if _side(frame) not in faced:
+            continue
+        run_len = float(frame[0])
+        top = _base_z(s) + s.size()[2] - DRIP_UNDER
+        rng = rng_for(seed, "runoff_drip", str(s.slot_id))
+        n = max(1, int(round(run_len / DRIP_EVERY)))
+        for k in range(n):
+            lx = -run_len / 2.0 + run_len * (k + 0.5) / n + float(rng.uniform(-DRIP_JITTER, DRIP_JITTER))
+            width = float(rng.uniform(*DRIP_WIDE))
+            length = float(rng.uniform(*DRIP_RUN))
+            kept = float(rng.random()) < DRIP_KEEP
+            offset = int(rng.integers(0, 1_000_000))
+            if not kept or abs(lx) + width / 2.0 > run_len / 2.0:
+                continue
+            pos, nrm = _face(s, lx, top, frame)
+            keep({"anchor_kind": "stain", "cover": "stain_streak", "collision": "none",
+                  "trim_piece": None, "uv_region": None, "slot_id": s.slot_id, "wall_material": s.material,
+                  "pos": pos, "normal": nrm,
+                  "size": round(width, 3), "size2": [round(width, 3), round(length, 3)],
+                  "seed_offset": offset})
+    return orders
+
+
 def coping_orders(manifest: SlotManifest, regions: list, *, seed: int,
                   over: float = COPING_OVER) -> list[dict]:
     """One ``coping`` per parapet run (Deli Counter >= 0.177.0's parapet slots).
@@ -1241,7 +1343,7 @@ def coping_orders(manifest: SlotManifest, regions: list, *, seed: int,
     uv = _uv(regions, "roof_edge")
     center = footprint_center(manifest)
     thick_m = modal_thickness(manifest)
-    empty = any(s.glazing == "facade" for s in manifest.slots)
+    empty = is_empty(manifest)
     faced = {_side(wall_frame(s, center, thick_m)) for s in manifest.slots
              if s.role in _FACE_ROLES and str(s.slot_id).startswith("ext_")}
 
